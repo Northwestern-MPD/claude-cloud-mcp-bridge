@@ -4,7 +4,7 @@ Updated: October 17, 2026 (America/Chicago). This file is the continuation brief
 
 ## Resume here
 
-The next implementation milestone is **individual identity and durable authorization (milestone 2)**, beginning with operator selection of an OIDC provider. The remote HTTPS ping acceptance criterion is satisfied: the operator reported successful native `mcp__bridge-remote-probe__ping` calls both before and after a verified Railway service restart, with no connection errors. Fresh-session provenance was not specified for the repeat, and Railway usage-limit review remains an operational follow-up. Real authentication and control of laptop Blender remain unverified.
+The next implementation milestone is **individual identity and durable authorization (milestone 2)**. The operator selected **Auth0 plus SQLite on a Railway volume**, with invited, verified email for the pilot and reusable authentication for other class MCP servers. The proposed [milestone 2 design](superpowers/specs/2026-10-17-milestone-2-identity-authorization-design.md) is ready for review; implementation planning/provisioning has not started. The remote HTTPS ping acceptance criterion is satisfied: the operator reported successful native `mcp__bridge-remote-probe__ping` calls both before and after a verified Railway service restart, with no connection errors. Fresh-session provenance was not specified for the repeat, and Railway usage-limit review remains an operational follow-up. Real authentication and control of laptop Blender remain unverified.
 
 Repository: https://github.com/Northwestern-MPD/claude-cloud-mcp-bridge
 
@@ -160,11 +160,11 @@ Acceptance: **native remote HTTPS** ping succeeds and succeeds again after a ses
 
 The current credentials are mock fixture bearers, not OIDC. Before any public desktop tool:
 
-- Select the operator-approved OIDC provider and register required applications. No provider or client registrations are chosen yet.
+- Provider/storage selected: **Auth0 + SQLite on a Railway volume**. Invited, verified email is sufficient; NetID SSO is not required. Review the [design spec](superpowers/specs/2026-10-17-milestone-2-identity-authorization-design.md), then write the implementation plan. Auth0 tenant/client registrations, production SMTP setup and the new authenticated service are not provisioned yet.
 - Implement the MCP OAuth-facing flow/protected resource metadata and external OIDC login as appropriate. Validate issuer, stable subject, audience, scope, expiration, refresh and revocation.
 - Establish exactly what individual principal a real Anthropic connector presents. Do not assume an immutable Claude session ID is forwarded.
 - Verify two simultaneous cloud sessions of the same user. The mock binds a lease to a gateway-generated MCP connection plus principal and conflicts on a separately initialized second connection. **It does not prove separation when two cloud sessions reuse the same token/transport.** Resolve this with a tested authenticated session/grant mechanism before shipping.
-- Persist users, explicitly provisioned team memberships, enrolled devices, credential fingerprints, pairing requests, leases/epochs and metadata-only audit events. Choose a single-instance persistent store deliberately (SQLite plus volume or a managed DB); no durable store exists now.
+- Persist users, explicitly provisioned team memberships, enrolled devices, credential fingerprints, pairing requests, leases/epochs and metadata-only audit events. Use the approved single-instance SQLite store on a Railway volume; no durable store is implemented yet.
 - Design credential storage/rotation/revocation and Mac/Windows OS keychain support. Do not persist raw credentials in logs or commit them.
 - Add actual production endpoints/transport separately; keep fixture authentication local-only.
 
@@ -224,4 +224,4 @@ Update this handoff as milestones are actually verified. Distinguish implementat
 
 ## Suggested first message in the local session
 
-> Read docs/HANDOFF.md and inspect the current repository. Continue with the first incomplete milestone: Railway deployment and a native remote HTTPS MCP ping from Claude Code cloud. Check the user's existing Railway service before creating anything. Use browser control only if this session actually exposes it. Keep the public deployment ping-only until individual authentication and grants are implemented. Work from main; the user prefers direct pushes without PRs. Report completed checks and concrete blockers, and update the handoff as you go.
+> Read docs/HANDOFF.md and the milestone 2 design spec linked above. Remote ping acceptance passed. Auth0 + SQLite and invited verified email are approved choices; the written design still needs review before implementation planning. Reuse authentication across class MCP servers with separate audiences and server authorization policies. Preserve the native same-user session-isolation evidence gate. Work from main; direct pushes are preferred. Keep production desktop tools disabled until their gates pass, and distinguish proposed design from implemented or verified behavior.
