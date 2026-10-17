@@ -4,7 +4,7 @@ Updated: October 17, 2026 (America/Chicago). This file is the continuation brief
 
 ## Resume here
 
-The immediate task is **deploy the existing ping-only service to Railway, then prove that an actual Claude Code cloud session can discover and invoke it over HTTPS**. Native STDIO MCP has already succeeded in Claude Cloud. Remote HTTPS MCP, real authentication, and control of laptop Blender have not been verified.
+The immediate task is **prove that an actual Claude Code cloud session can discover and invoke the deployed Railway probe over HTTPS, then repeat after a session/service restart**. Railway deployment and direct HTTPS initialization/discovery/ping have succeeded. Native STDIO MCP has already succeeded in Claude Cloud. Native remote HTTPS MCP, real authentication, and control of laptop Blender have not been verified.
 
 Repository: https://github.com/Northwestern-MPD/claude-cloud-mcp-bridge
 
@@ -46,7 +46,7 @@ Decisive success: a student approves pairing locally, reads their real scene, ap
 | Mock demo | Two fixture students in different teams; owner-only reads, cross-team denial, revocation; scripted fixture consent, no real sign-in |
 | Native cloud STDIO probe | User reported successful discovery and invocation of `mcp__bridge-probe__ping` through Claude's native MCP interface |
 | HTTP probe | Ping-only server with `/health`, stateless POST `/mcp`, and configurable probe bind; locally tested with actual MCP clients |
-| Railway packaging | Root Dockerfile, railway.json, committed HTTP SDK bundle, non-root runtime; built and smoke-tested locally on Node 22 |
+| Railway deployment | Root Dockerfile deployed from main; one replica, no volume/database; direct HTTPS health, MCP initialization, ping-only discovery and ping verified at the recorded URL |
 | GitHub CI | Workflow is present. Remote results were unavailable through the accessible APIs; do not claim remote CI passed |
 
 Latest local verification before the main merge passed: **14 tests**, typecheck, bundle regeneration with no artifact drift, TypeScript build, mock demo and Docker build. Earlier container smoke testing verified `/health`, HTTP MCP initialization, a ping-only catalogue and ping on Node v22.23.3. These are local checks, not a live Railway test.
@@ -61,7 +61,7 @@ Native cloud discovery initially failed because the repo was not on the session'
 
 ## Current code map
 
-- `.mcp.json`: working local/cloud **STDIO** probe, `node probe/stdio.cjs`. It does not reference a Railway URL yet.
+- `.mcp.json`: working local/cloud **STDIO** `bridge-probe`, `node probe/stdio.cjs`, plus **HTTP** `bridge-remote-probe` at `https://bridge-remote-probe-production.up.railway.app/mcp`. Native cloud use of the new HTTP entry remains unverified.
 - `.claude/settings.json`: SessionStart hook runs `npm ci --ignore-scripts` for the full project. The bundled probe does not depend on that hook.
 - `apps/probe-stdio.ts`: standalone STDIO probe source.
 - `apps/probe.ts`: HTTP probe source (also supports STDIO); configurable `PROBE_HOST`, default `127.0.0.1`, public bind allowed only for this ping service.
@@ -111,11 +111,23 @@ docker run --rm -p 127.0.0.1:3334:3334 -e PORT=3334 bridge-probe
 
 Health URL: `http://127.0.0.1:3334/health`. Container public binding is only for the harmless probe; the host mapping above remains loopback-only.
 
+## Local continuation — October 17, 2026
+
+- Local checkout: `/Users/john_renaldi/claude-code-projects/mpd-claude-cloud-mcp-bridge`. Clean `main` at `f21fa7c` before these configuration/documentation changes; `git pull --ff-only origin main` reported already up to date.
+- Rechecked the committed HTTP bundle directly on local Node v22.14.0 without installing dependencies. Loopback health, MCP initialization, ping-only catalogue, ping and GET `/mcp` → 405 passed; the temporary process was stopped.
+- Browser control is exposed, but its runtime failed before reading browser state: `failed to start Node runtime: No such file or directory (os error 2)`. Railway's plugin subsequently became connected, so browser control was not needed for deployment. No Railway CLI was installed.
+- Railway inventory initially returned zero projects. Created project `mpd-claude-cloud-mcp-bridge` (`e759a352-01af-4dd6-994d-662f809d7478`), production environment `bd25f4b4-0fa5-4eaf-9a1d-d3490edddebd`, service `bridge-remote-probe` (`e299c6b9-b030-4cfb-a724-17d5a702033d`). Verified one replica in `iad`, no volumes/buckets, no supplied variables or manual build/start overrides. Build logs show the root Dockerfile and Node 22 image.
+- Deployment `9393c752-4d04-416b-9402-8565b1edbe35` reached `SUCCESS` for commit `f21fa7c2ebe758a0103568e1baa7cc77ae3f32bc` from `main`. Domain: `bridge-remote-probe-production.up.railway.app`; MCP endpoint: `https://bridge-remote-probe-production.up.railway.app/mcp`.
+- Direct hosted HTTPS checks passed: `/health` returned `{"status":"ok","mode":"compatibility-probe","desktop_access":false}`; initialization negotiated `2025-03-26`; `tools/list` exposed only `ping`; `tools/call` returned `{"pong":true,"mode":"compatibility-probe","desktop_access":false}`; GET `/mcp` returned 405. These were direct HTTP requests from this local session, **not native Claude Code cloud calls**.
+- Added the real URL as `bridge-remote-probe` in `.mcp.json`, preserving STDIO `bridge-probe`. Start the acceptance test from the main commit containing this HTTP entry.
+- Railway billing/usage limits are not exposed by the connected tools. Account plan, current spend and configured limits remain unverified; operator review is still required. Official cost controls: https://docs.railway.com/pricing/cost-control . A hard limit can stop workspace workloads; select it deliberately.
+- Milestone 1 remains incomplete until native remote HTTPS discovery/ping succeeds in Claude Code cloud, then succeeds again after a session/service restart. Browser automation cannot perform that cloud-session interaction in this local session; the operator must run the prompt below and provide the native tool result/error.
+
 ## Remaining work, in execution order
 
 ### 1. Complete Railway remote ping — immediate next action
 
-No Railway service ID, deployment URL or generated domain was recorded. The user has a Railway account and reported signing in. **Check whether a service already exists before creating a duplicate.** Railway is not connected as an app in this cloud workspace.
+The Railway service now exists and passed direct HTTPS checks; see the local continuation above for IDs and deployed commit. **Reuse this service; do not create a duplicate.** The Railway plugin is connected in the local continuation session. Deployment steps below are retained as the runbook; next execute the native cloud test and review account usage limits.
 
 Follow [RAILWAY_SETUP.md](RAILWAY_SETUP.md):
 
@@ -128,7 +140,7 @@ Follow [RAILWAY_SETUP.md](RAILWAY_SETUP.md):
 - Review usage/budget controls with the user; do not add paid database services yet.
 - Record the domain and deployed commit in this handoff/verification notes. Never record tokens.
 
-Add the real HTTPS `/mcp` URL as a separately named **`bridge-remote-probe`** in project MCP config or a claude.ai custom connector. Keep STDIO `bridge-probe` for comparison. For direct project-config egress, add the exact Railway hostname to the Anthropic environment's Custom allowlist with package-manager defaults included. Connector delivery is a different path; verify it rather than conflating the two.
+The real HTTPS `/mcp` URL is now configured as **`bridge-remote-probe`** in project `.mcp.json`, alongside STDIO `bridge-probe` for comparison. A claude.ai custom connector is an alternative. For direct project-config egress, add the exact Railway hostname to the Anthropic environment's Custom allowlist with package-manager defaults included. Connector delivery is a different path; verify it rather than conflating the two.
 
 Start a fresh cloud session from the config-containing branch and request:
 

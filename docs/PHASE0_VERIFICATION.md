@@ -54,3 +54,11 @@ The operator subsequently reported native tool discovery and a successful `mcp__
 Railway was selected for remote hosting. `railway.json`, the root Dockerfile, a standalone HTTP bundle, configurable probe-only bind host, and `/health` support prepare the next test. No Railway account is connected in this workspace, and no public deployment or remote cloud HTTP success is claimed. See `RAILWAY_SETUP.md`.
 
 Railway preparation validation: all 14 automated tests, typecheck, mock demo and TypeScript build passed. The Dockerfile built successfully; the resulting non-root, read-only-container smoke test passed `/health`, real HTTP MCP initialization, ping-only tool enumeration and ping on Node v22.23.3. The test container was stopped afterward. This is local container evidence, not a live Railway deployment.
+
+## Live Railway HTTPS probe — local continuation
+
+On October 17, 2026, the connected Railway account initially contained no projects. Created one project/service and deployed `main` commit `f21fa7c2ebe758a0103568e1baa7cc77ae3f32bc`. Deployment `9393c752-4d04-416b-9402-8565b1edbe35` reached `SUCCESS`. Build logs confirmed the root Dockerfile, `node:22-bookworm-slim` and committed HTTP bundle. Inventory confirmed one replica in `iad`, no volume/database and no user variables. The public endpoint is https://bridge-remote-probe-production.up.railway.app/mcp . IDs are recorded in `HANDOFF.md`.
+
+Direct HTTPS requests from the local continuation session verified HTTP 200 `/health` with the expected JSON, MCP initialization (`2025-03-26`), `tools/list` containing only `ping`, and `tools/call` returning `{"pong":true,"mode":"compatibility-probe","desktop_access":false}`. GET `/mcp` returned 405 as designed. Equivalent loopback checks passed on Node v22.14.0. No source or bundle changed in this continuation; dependencies/full tests were not rerun.
+
+The real HTTP URL was added to project `.mcp.json` as `bridge-remote-probe`, preserving the STDIO entry. **Native remote Claude Code cloud discovery/ping and the repeat after session/service restart are still unverified.** These direct HTTP checks do not satisfy that acceptance gate or establish identity, OAuth, desktop access or Blender control. Account usage limits have not been inspected or changed.

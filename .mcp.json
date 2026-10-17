@@ -6,6 +6,10 @@
       "args": [
         "probe/stdio.cjs"
       ]
+    },
+    "bridge-remote-probe": {
+      "type": "http",
+      "url": "https://bridge-remote-probe-production.up.railway.app/mcp"
     }
   }
 }

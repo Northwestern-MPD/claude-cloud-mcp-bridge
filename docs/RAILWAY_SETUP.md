@@ -2,6 +2,8 @@
 
 This deploys a public, read-only compatibility probe. It exposes only `ping` and a health check, with no desktop access, secrets, identity assertions, database, or laptop connection. Production desktop routing is still separate work.
 
+Current deployment (October 17, 2026): `bridge-remote-probe` is live at `https://bridge-remote-probe-production.up.railway.app/mcp`, deployed from main. Direct HTTPS health/discovery/ping passed; native Claude Code cloud acceptance remains pending. Reuse the existing service; see `HANDOFF.md` for IDs and evidence. Project `.mcp.json` now contains the real HTTP entry.
+
 ## Deploy from GitHub
 
 1. In Railway, create a project using **Deploy from GitHub repo** and select `Northwestern-MPD/claude-cloud-mcp-bridge`. Authorize Railway's GitHub app for this repository if needed.

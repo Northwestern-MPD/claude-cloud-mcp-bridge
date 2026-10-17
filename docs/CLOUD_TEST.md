@@ -38,7 +38,7 @@ Record Claude Code version if exposed, selected branch/commit, MCP tool discover
 
 ## Second test: remote HTTP compatibility
 
-Prerequisite: operator-controlled public HTTPS hostname serving the **read-only probe**, not the mock gateway. We cannot give a working hostname until it is provisioned.
+The **read-only probe** is deployed at `https://bridge-remote-probe-production.up.railway.app/mcp`; direct HTTPS checks passed. The project `.mcp.json` includes this endpoint as `bridge-remote-probe` alongside STDIO `bridge-probe`. Use a fresh session from the main commit containing the HTTP entry. Native remote cloud invocation remains unverified; see `HANDOFF.md`. The following hosting instructions remain as a runbook for replacement hosts.
 
 1. Operator runs `npm ci --ignore-scripts` and `npm run probe -- --http` on a host, then configures TLS reverse proxy to `127.0.0.1:3334`. Permit POST `/mcp`; bound request sizes/concurrency at the proxy. Disable payload logging. No WSS is needed for the ping probe.
 2. Add the HTTPS `/mcp` URL as a custom connector in claude.ai and enable it for your cloud session. Team/Enterprise may require an administrator. This route is documented as going through Anthropic infrastructure.
