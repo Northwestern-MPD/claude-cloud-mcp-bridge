@@ -1,7 +1,7 @@
 # Milestone 2: reusable class MCP identity and durable authorization
 
 Date: October 17, 2026 (America/Chicago)
-Status: proposed design for review; Auth0 and SQLite are approved choices. Implementation, account provisioning and production auth verification have not started.
+Status: design approved by the operator on October 17, 2026. The [implementation plan](../plans/2026-10-17-milestone-2-identity-authorization.md) is prepared for review; implementation, account provisioning and production auth verification have not started.
 
 ## 1. Intent and accepted decisions
 
