@@ -4,7 +4,7 @@ Updated: October 17, 2026 (America/Chicago). This file is the continuation brief
 
 ## Resume here
 
-The immediate task is **repeat the successful native remote HTTPS ping after the Railway service restart and in a fresh Claude Code cloud session**. Railway deployment and direct HTTPS initialization/discovery/ping have succeeded. The operator has now reported one successful native `mcp__bridge-remote-probe__ping` invocation with no connection error. Real authentication and control of laptop Blender remain unverified.
+The next implementation milestone is **individual identity and durable authorization (milestone 2)**, beginning with operator selection of an OIDC provider. The remote HTTPS ping acceptance criterion is satisfied: the operator reported successful native `mcp__bridge-remote-probe__ping` calls both before and after a verified Railway service restart, with no connection errors. Fresh-session provenance was not specified for the repeat, and Railway usage-limit review remains an operational follow-up. Real authentication and control of laptop Blender remain unverified.
 
 Repository: https://github.com/Northwestern-MPD/claude-cloud-mcp-bridge
 
@@ -44,6 +44,7 @@ Decisive success: a student approves pairing locally, reads their real scene, ap
 | Consent controls | Pairing approval callbacks, narrowed grants, per-code approval, lease expiry, write exclusion, request/lease/epoch correlation |
 | Fake Blender | Deterministic scene reads, `mock:add_cube` mutation, fixed 1×1 PNG screenshot fixture; no Python execution |
 | Mock demo | Two fixture students in different teams; owner-only reads, cross-team denial, revocation; scripted fixture consent, no real sign-in |
+| Native cloud HTTPS probe | Operator reported successful `mcp__bridge-remote-probe__ping` calls before and after the verified Railway service restart; fixed result only, no desktop access |
 | Native cloud STDIO probe | User reported successful discovery and invocation of `mcp__bridge-probe__ping` through Claude's native MCP interface |
 | HTTP probe | Ping-only server with `/health`, stateless POST `/mcp`, and configurable probe bind; locally tested with actual MCP clients |
 | Railway deployment | Root Dockerfile deployed from main; one replica, no volume/database; direct HTTPS health, MCP initialization, ping-only discovery and ping verified at the recorded URL |
@@ -61,7 +62,7 @@ Native cloud discovery initially failed because the repo was not on the session'
 
 ## Current code map
 
-- `.mcp.json`: working local/cloud **STDIO** `bridge-probe`, `node probe/stdio.cjs`, plus **HTTP** `bridge-remote-probe` at `https://bridge-remote-probe-production.up.railway.app/mcp`. The operator reported one native cloud HTTP success; restart/fresh-session repeats remain pending.
+- `.mcp.json`: working local/cloud **STDIO** `bridge-probe`, `node probe/stdio.cjs`, plus **HTTP** `bridge-remote-probe` at `https://bridge-remote-probe-production.up.railway.app/mcp`. The operator reported native cloud HTTP success before and after the Railway service restart. A separate fresh-session result was not identified.
 - `.claude/settings.json`: SessionStart hook runs `npm ci --ignore-scripts` for the full project. The bundled probe does not depend on that hook.
 - `apps/probe-stdio.ts`: standalone STDIO probe source.
 - `apps/probe.ts`: HTTP probe source (also supports STDIO); configurable `PROBE_HOST`, default `127.0.0.1`, public bind allowed only for this ping service.
@@ -123,13 +124,13 @@ Health URL: `http://127.0.0.1:3334/health`. Container public binding is only for
 - Railway billing/usage limits are not exposed by the connected tools. Account plan, current spend and configured limits remain unverified; operator review is still required. Official cost controls: https://docs.railway.com/pricing/cost-control . A hard limit can stop workspace workloads; select it deliberately.
 - The operator subsequently reported successful native invocation of server `bridge-remote-probe`, tool `mcp__bridge-remote-probe__ping`, result `{"pong":true,"mode":"compatibility-probe","desktop_access":false}`, with no connection error. They explicitly confirmed no local probe, shell or SDK substitute. The exact cloud session commit/version was not supplied; this is operator-reported cloud evidence.
 - Restarted Railway deployment `9393c752-4d04-416b-9402-8565b1edbe35` on October 17 at approximately 15:46 America/Chicago (20:46 UTC). The restart API succeeded and runtime logs contain a new startup line at `2026-10-17T20:46:25.054364503Z`, listening on `0.0.0.0:8080`. Direct HTTPS health, ping-only catalogue and ping passed after restart. No application source or configuration changed.
-- Milestone 1 still requires the native cloud ping repeat after this service restart and in a fresh cloud session. The operator has been asked for both results; do not treat the direct HTTP post-restart checks as native cloud acceptance. Usage-limit review also remains outstanding.
+- In reply to the post-restart native-repeat request, the operator reported another successful call, no connection error, and the same `{"pong":true,"mode":"compatibility-probe","desktop_access":false}` result. This satisfies the native remote HTTPS acceptance criterion before and after a service restart. The reply did not identify a separate fresh-session run, so that additional coverage remains unverified. Usage-limit review remains an operational follow-up; it is not evidence about MCP transport.
 
 ## Remaining work, in execution order
 
-### 1. Complete Railway remote ping — immediate next action
+### 1. Railway remote ping — transport acceptance passed
 
-The Railway service now exists and passed direct HTTPS checks; see the local continuation above for IDs and deployed commit. **Reuse this service; do not create a duplicate.** The Railway plugin is connected in the local continuation session. Deployment steps below are retained as the runbook. The first native cloud ping succeeded per the operator; next obtain the post-restart and fresh-session native results and review account usage limits.
+The Railway service now exists and passed direct HTTPS checks; see the local continuation above for IDs and deployed commit. **Reuse this service; do not create a duplicate.** The Railway plugin is connected in the local continuation session. Deployment steps below are retained as the runbook. Native cloud ping succeeded both before and after the verified service restart, per the operator. The transport acceptance criterion below is satisfied. Remaining operational follow-up: review account usage limits; separate fresh-session coverage is not established by the supplied report.
 
 Follow [RAILWAY_SETUP.md](RAILWAY_SETUP.md):
 
@@ -153,7 +154,7 @@ not substitute a shell or SDK invocation. Report the exact server name,
 result, and connection errors if any.
 ```
 
-Done when **native remote HTTPS** ping succeeds and succeeds again after a session/service restart. Record real evidence. The prior successful native ping was STDIO inside the VM, not this test.
+Acceptance: **native remote HTTPS** ping succeeds and succeeds again after a session/service restart. **Passed on October 17, 2026**, using operator-reported native cloud results before and after the directly verified Railway service restart. This evidence is separate from the earlier STDIO ping inside the VM. A separate fresh-session repeat was requested as additional coverage but was not specifically identified in the reply.
 
 ### 2. Implement and verify individual identity and durable authorization
 

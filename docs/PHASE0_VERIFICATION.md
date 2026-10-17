@@ -70,3 +70,9 @@ The operator reported a successful invocation through an actual Claude Code clou
 After that report, restarted the existing Railway deployment `9393c752-4d04-416b-9402-8565b1edbe35` using the connected Railway tool. The API returned that deployment ID; a new runtime startup line was observed at `2026-10-17T20:46:25.054364503Z` (15:46 America/Chicago), listening on `0.0.0.0:8080`. Direct HTTPS `/health`, ping-only catalogue and ping passed after restart. The process writes its startup line to stderr, which Railway labels as error severity; the line itself reports startup, and health/ping passed.
 
 Requested a repeat native ping after the service restart and another in a fresh cloud session. Those results remain pending. Budget/usage-limit review remains pending. No identity, OAuth or desktop capability has been established by these ping results.
+
+## Native remote ping after service restart — acceptance passed
+
+In reply to the post-restart native invocation request, the operator reported that the call succeeded with no connection error and returned `{"pong":true,"mode":"compatibility-probe","desktop_access":false}`. Combined with the first explicitly native `mcp__bridge-remote-probe__ping` report and the directly verified Railway restart, this satisfies the documented remote HTTPS ping acceptance criterion before and after a service restart.
+
+This second result is operator-reported, not a tool invocation directly observed by Codex. The reply did not identify a separate fresh cloud session, so independent fresh-session startup coverage remains unverified. No additional restart was performed. Railway usage-limit review remains an operational follow-up. The next implementation milestone is real individual identity and durable authorization; ping acceptance establishes no desktop authority.

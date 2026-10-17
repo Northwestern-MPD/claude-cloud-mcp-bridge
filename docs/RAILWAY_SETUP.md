@@ -2,7 +2,7 @@
 
 This deploys a public, read-only compatibility probe. It exposes only `ping` and a health check, with no desktop access, secrets, identity assertions, database, or laptop connection. Production desktop routing is still separate work.
 
-Current deployment (October 17, 2026): `bridge-remote-probe` is live at `https://bridge-remote-probe-production.up.railway.app/mcp`, deployed from main. Direct HTTPS health/discovery/ping passed; the first native Claude Code cloud ping succeeded per the operator; post-service-restart and fresh-session native repeats remain pending. Reuse the existing service; see `HANDOFF.md` for IDs and evidence. Project `.mcp.json` now contains the real HTTP entry.
+Current deployment (October 17, 2026): `bridge-remote-probe` is live at `https://bridge-remote-probe-production.up.railway.app/mcp`, deployed from main. Direct HTTPS health/discovery/ping passed; native Claude Code cloud ping succeeded before and after the verified service restart per the operator, satisfying transport acceptance. Separate fresh-session coverage and account usage-limit review remain follow-ups. Reuse the existing service; see `HANDOFF.md` for IDs and evidence. Project `.mcp.json` now contains the real HTTP entry.
 
 ## Deploy from GitHub
 
