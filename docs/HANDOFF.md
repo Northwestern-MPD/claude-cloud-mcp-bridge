@@ -4,7 +4,7 @@ Updated: October 17, 2026 (America/Chicago). This file is the continuation brief
 
 ## Resume here
 
-The immediate task is **prove that an actual Claude Code cloud session can discover and invoke the deployed Railway probe over HTTPS, then repeat after a session/service restart**. Railway deployment and direct HTTPS initialization/discovery/ping have succeeded. Native STDIO MCP has already succeeded in Claude Cloud. Native remote HTTPS MCP, real authentication, and control of laptop Blender have not been verified.
+The immediate task is **repeat the successful native remote HTTPS ping after the Railway service restart and in a fresh Claude Code cloud session**. Railway deployment and direct HTTPS initialization/discovery/ping have succeeded. The operator has now reported one successful native `mcp__bridge-remote-probe__ping` invocation with no connection error. Real authentication and control of laptop Blender remain unverified.
 
 Repository: https://github.com/Northwestern-MPD/claude-cloud-mcp-bridge
 
@@ -61,7 +61,7 @@ Native cloud discovery initially failed because the repo was not on the session'
 
 ## Current code map
 
-- `.mcp.json`: working local/cloud **STDIO** `bridge-probe`, `node probe/stdio.cjs`, plus **HTTP** `bridge-remote-probe` at `https://bridge-remote-probe-production.up.railway.app/mcp`. Native cloud use of the new HTTP entry remains unverified.
+- `.mcp.json`: working local/cloud **STDIO** `bridge-probe`, `node probe/stdio.cjs`, plus **HTTP** `bridge-remote-probe` at `https://bridge-remote-probe-production.up.railway.app/mcp`. The operator reported one native cloud HTTP success; restart/fresh-session repeats remain pending.
 - `.claude/settings.json`: SessionStart hook runs `npm ci --ignore-scripts` for the full project. The bundled probe does not depend on that hook.
 - `apps/probe-stdio.ts`: standalone STDIO probe source.
 - `apps/probe.ts`: HTTP probe source (also supports STDIO); configurable `PROBE_HOST`, default `127.0.0.1`, public bind allowed only for this ping service.
@@ -121,13 +121,15 @@ Health URL: `http://127.0.0.1:3334/health`. Container public binding is only for
 - Direct hosted HTTPS checks passed: `/health` returned `{"status":"ok","mode":"compatibility-probe","desktop_access":false}`; initialization negotiated `2025-03-26`; `tools/list` exposed only `ping`; `tools/call` returned `{"pong":true,"mode":"compatibility-probe","desktop_access":false}`; GET `/mcp` returned 405. These were direct HTTP requests from this local session, **not native Claude Code cloud calls**.
 - Added the real URL as `bridge-remote-probe` in `.mcp.json`, preserving STDIO `bridge-probe`. Start the acceptance test from the main commit containing this HTTP entry.
 - Railway billing/usage limits are not exposed by the connected tools. Account plan, current spend and configured limits remain unverified; operator review is still required. Official cost controls: https://docs.railway.com/pricing/cost-control . A hard limit can stop workspace workloads; select it deliberately.
-- Milestone 1 remains incomplete until native remote HTTPS discovery/ping succeeds in Claude Code cloud, then succeeds again after a session/service restart. Browser automation cannot perform that cloud-session interaction in this local session; the operator must run the prompt below and provide the native tool result/error.
+- The operator subsequently reported successful native invocation of server `bridge-remote-probe`, tool `mcp__bridge-remote-probe__ping`, result `{"pong":true,"mode":"compatibility-probe","desktop_access":false}`, with no connection error. They explicitly confirmed no local probe, shell or SDK substitute. The exact cloud session commit/version was not supplied; this is operator-reported cloud evidence.
+- Restarted Railway deployment `9393c752-4d04-416b-9402-8565b1edbe35` on October 17 at approximately 15:46 America/Chicago (20:46 UTC). The restart API succeeded and runtime logs contain a new startup line at `2026-10-17T20:46:25.054364503Z`, listening on `0.0.0.0:8080`. Direct HTTPS health, ping-only catalogue and ping passed after restart. No application source or configuration changed.
+- Milestone 1 still requires the native cloud ping repeat after this service restart and in a fresh cloud session. The operator has been asked for both results; do not treat the direct HTTP post-restart checks as native cloud acceptance. Usage-limit review also remains outstanding.
 
 ## Remaining work, in execution order
 
 ### 1. Complete Railway remote ping — immediate next action
 
-The Railway service now exists and passed direct HTTPS checks; see the local continuation above for IDs and deployed commit. **Reuse this service; do not create a duplicate.** The Railway plugin is connected in the local continuation session. Deployment steps below are retained as the runbook; next execute the native cloud test and review account usage limits.
+The Railway service now exists and passed direct HTTPS checks; see the local continuation above for IDs and deployed commit. **Reuse this service; do not create a duplicate.** The Railway plugin is connected in the local continuation session. Deployment steps below are retained as the runbook. The first native cloud ping succeeded per the operator; next obtain the post-restart and fresh-session native results and review account usage limits.
 
 Follow [RAILWAY_SETUP.md](RAILWAY_SETUP.md):
 

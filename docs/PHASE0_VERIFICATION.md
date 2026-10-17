@@ -62,3 +62,11 @@ On October 17, 2026, the connected Railway account initially contained no projec
 Direct HTTPS requests from the local continuation session verified HTTP 200 `/health` with the expected JSON, MCP initialization (`2025-03-26`), `tools/list` containing only `ping`, and `tools/call` returning `{"pong":true,"mode":"compatibility-probe","desktop_access":false}`. GET `/mcp` returned 405 as designed. Equivalent loopback checks passed on Node v22.14.0. No source or bundle changed in this continuation; dependencies/full tests were not rerun.
 
 The real HTTP URL was added to project `.mcp.json` as `bridge-remote-probe`, preserving the STDIO entry. **Native remote Claude Code cloud discovery/ping and the repeat after session/service restart are still unverified.** These direct HTTP checks do not satisfy that acceptance gate or establish identity, OAuth, desktop access or Blender control. Account usage limits have not been inspected or changed.
+
+## First native remote cloud ping and service restart
+
+The operator reported a successful invocation through an actual Claude Code cloud session's native MCP interface: server `bridge-remote-probe`, tool `mcp__bridge-remote-probe__ping`, description “Read-only bridge compatibility check. No desktop access.” Result: `{"pong":true,"mode":"compatibility-probe","desktop_access":false}`. They reported no connection error and explicitly excluded the local STDIO server and shell/SDK substitutes. This is operator-reported cloud evidence; the exact session commit/version was not provided.
+
+After that report, restarted the existing Railway deployment `9393c752-4d04-416b-9402-8565b1edbe35` using the connected Railway tool. The API returned that deployment ID; a new runtime startup line was observed at `2026-10-17T20:46:25.054364503Z` (15:46 America/Chicago), listening on `0.0.0.0:8080`. Direct HTTPS `/health`, ping-only catalogue and ping passed after restart. The process writes its startup line to stderr, which Railway labels as error severity; the line itself reports startup, and health/ping passed.
+
+Requested a repeat native ping after the service restart and another in a fresh cloud session. Those results remain pending. Budget/usage-limit review remains pending. No identity, OAuth or desktop capability has been established by these ping results.
