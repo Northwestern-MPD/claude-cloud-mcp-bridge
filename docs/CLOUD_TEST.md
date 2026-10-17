@@ -8,7 +8,7 @@ Ready for an isolated **Phase 0 compatibility test**, not an end-to-end Blender 
 |---|---|
 | Name | `MPD Blender Bridge — Phase 0` |
 | Repository | `Northwestern-MPD/claude-cloud-mcp-bridge` |
-| Session branch | `codex/bridge-mock-pilot` (main is still empty) |
+| Session branch | `main` |
 | Session repositories | Only this repository |
 | Network | `Trusted` for the first local/mock probe |
 | Environment variables | Leave empty |

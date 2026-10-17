@@ -5,7 +5,7 @@ This deploys a public, read-only compatibility probe. It exposes only `ping` and
 ## Deploy from GitHub
 
 1. In Railway, create a project using **Deploy from GitHub repo** and select `Northwestern-MPD/claude-cloud-mcp-bridge`. Authorize Railway's GitHub app for this repository if needed.
-2. Set the service source branch to **`codex/bridge-mock-pilot`** and root directory to `/`. If Railway initially tries empty `main`, change the branch and redeploy.
+2. Set the service source branch to **`main`** and root directory to `/`. The bridge implementation and Railway configuration are now on `main`.
 3. Railway reads `railway.json` and the root Dockerfile. Leave build/start command overrides empty. Use one service and one replica. No database or volume is needed for this probe.
 4. No user-supplied environment variables or secrets are needed. Railway supplies `PORT`; the Docker image sets `PROBE_HOST=0.0.0.0` and `NODE_ENV=production`. Do not override the container command with `gateway:mock`.
 5. Under service **Settings → Networking**, generate a public domain. Select the service's assigned listening port if prompted. Railway provides HTTPS; do not buy a domain for this test.
