@@ -13,7 +13,8 @@
     "dev:mock": "tsx apps/demo.ts",
     "gateway:mock": "tsx apps/gateway/main.ts",
     "connector": "tsx apps/connector/main.ts",
-    "probe": "tsx apps/probe.ts"
+    "probe": "tsx apps/probe.ts",
+    "build:probe": "node scripts/build-probe.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",
@@ -23,6 +24,7 @@
   "devDependencies": {
     "@types/node": "26.6.5",
     "@types/ws": "8.18.2",
+    "esbuild": "0.28.2",
     "tsx": "4.23.15",
     "typescript": "7.0.2"
   }

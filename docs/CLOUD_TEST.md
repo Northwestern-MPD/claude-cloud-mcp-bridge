@@ -19,7 +19,7 @@ Ready for an isolated **Phase 0 compatibility test**, not an end-to-end Blender 
 
 Use a private test session initially. A shared environment is configuration, not desktop identity. There is no student token, team token, Anthropic API key, SSH key, VPN, or laptop address to add.
 
-The project contains a synchronous SessionStart hook running `npm ci --ignore-scripts`. It requires Node 22+ (documented cloud default: 22). No gateway daemon is started from a cached setup script. If your organization blocks repository hooks, run the install command manually before reconnecting `bridge-probe`.
+The ping probe is a checked-in SDK bundle (`node probe/stdio.cjs`) requiring no npm install. The project contains a synchronous SessionStart hook running `npm ci --ignore-scripts`. It requires Node 22+ (documented cloud default: 22). No gateway daemon is started from a cached setup script. If your organization blocks repository hooks, run the install command manually before reconnecting `bridge-probe`.
 
 Initial test prompt:
 
@@ -28,7 +28,7 @@ Run node --version and npm --version, then npm run typecheck, npm test,
 and npm run dev:mock. Find the bridge-probe MCP server and call its ping
 MCP tool (not a shell substitute). Report the exact tool result and whether
 it was loaded from this repository's .mcp.json. If unavailable, report the
-MCP error and try reconnecting after npm ci --ignore-scripts completes.
+MCP error and inspect its stderr. Do not substitute a shell/SDK call for the native MCP call.
 Do not add credentials, modify authorization, or publish any server.
 ```
 

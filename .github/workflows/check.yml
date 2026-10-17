@@ -10,6 +10,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --ignore-scripts
+      - run: npm run build:probe
+      - run: git diff --exit-code -- probe/
       - run: npm run typecheck
       - run: npm test
       - run: npm run dev:mock

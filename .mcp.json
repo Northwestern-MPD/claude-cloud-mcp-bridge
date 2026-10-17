@@ -3,7 +3,9 @@
     "bridge-probe": {
       "type": "stdio",
       "command": "node",
-      "args": ["--import", "tsx", "apps/probe.ts"]
+      "args": [
+        "probe/stdio.cjs"
+      ]
     }
   }
 }

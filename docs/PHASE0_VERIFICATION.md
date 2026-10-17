@@ -36,3 +36,13 @@ Cloned into ignored `work/`; no upstream code is incorporated.
 ## Next evidence required
 
 Follow `CLOUD_TEST.md` to record the first real cloud ping. Then obtain public probe hosting, validate remote ping, implement gateway OAuth/OIDC and verify per-user tokens and independent-session behavior. Only then integrate a pinned local Blender STDIO adapter and physical two-student tests. Tests of the mock are not a substitute for these gates.
+
+## First Anthropic Cloud reports and cold-start fix
+
+Operator-relayed results: code at `3fac770` passed typecheck, all 12 tests and the mock demo on Anthropic's Node 22.22.0. The first session started from empty main, so no native probe was registered; an SDK-driven ping succeeded from a temporary checkout. A later session with `.mcp.json` present reported native `bridge-probe (CONNECTION_CLOSED): Connection closed`. No native ping succeeded and no cloud stderr was supplied. These are user-provided reports, not direct observations by this workspace.
+
+Local reproduction: launching the original `node --import tsx apps/probe.ts` from an isolated `/tmp` checkout without node_modules exits with `ERR_MODULE_NOT_FOUND` for tsx, observed by the SDK as `Connection closed`. The installed checkout works. This confirms a dependency-sensitive cold start; it does not prove Anthropic's hook/MCP ordering or rule out another cloud cause.
+
+Fix: `.mcp.json` launches a checked-in SDK-based Node bundle, `probe/stdio.cjs`, with no npm runtime dependencies. The build includes third-party notices and CI regeneration checks. A regression test copies the checkout's probe/config/source into an isolated temporary directory without node_modules, then uses the exact configured command to initialize, list tools and call ping. It failed before the fix and passes afterward. Cloud native discovery must be tested again on the new commit; full startup stderr is needed if it still fails. Do not replace native discovery with a shell/SDK invocation in that cloud acceptance test.
+
+Post-fix verification: typecheck, full 13-test suite, mock demo and TypeScript build pass locally. The isolated cold-checkout regression also passed using Node 22.22.0 (`npm exec --yes --package=node@22.22.0 -- node --import tsx --test test/cold-start.test.ts`), matching the reported cloud version. Native cloud startup remains unverified until the next operator test.
