@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "bridge-probe": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["--import", "tsx", "apps/probe.ts"]
+    }
+  }
+}

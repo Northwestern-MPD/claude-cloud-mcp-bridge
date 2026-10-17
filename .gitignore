@@ -1,0 +1,8 @@
+node_modules/
+dist/
+work/
+.env
+.env.*
+!.env.example
+*.db*
+coverage/
