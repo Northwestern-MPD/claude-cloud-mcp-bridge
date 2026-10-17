@@ -14,7 +14,8 @@
     "gateway:mock": "tsx apps/gateway/main.ts",
     "connector": "tsx apps/connector/main.ts",
     "probe": "tsx apps/probe.ts",
-    "build:probe": "node scripts/build-probe.mjs"
+    "build:probe": "node scripts/build-probe.mjs",
+    "start": "node probe/http.cjs --http"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",

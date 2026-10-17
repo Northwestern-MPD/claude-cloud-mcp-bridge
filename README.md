@@ -28,7 +28,9 @@ Mock demo passed. No Anthropic credentials, real Blender or public listener used
 
 See [cloud test settings](docs/CLOUD_TEST.md). The committed `.mcp.json` exposes only `ping` over STDIO. The committed SDK-based `probe/stdio.cjs` bundle starts with Node alone, before dependencies or the SessionStart hook are ready. The hook installs dependencies for the full mock demo. Rebuild the bundle and included third-party notices with `npm run build:probe` after changing `apps/probe-stdio.ts`. This is a cloud loading probe, **not proof of cloud-to-laptop connectivity or authentication**.
 
-For an operator-hosted HTTP probe:
+For Railway deployment, use [Railway setup](docs/RAILWAY_SETUP.md). The committed Docker image configuration publishes only the read-only probe, not the mock gateway.
+
+For a local HTTP probe:
 
 ```sh
 npm run probe -- --http

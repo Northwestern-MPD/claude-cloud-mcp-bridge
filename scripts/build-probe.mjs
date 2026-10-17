@@ -1,12 +1,12 @@
 import { build } from 'esbuild';
 import { readFile, readdir, writeFile } from 'node:fs/promises';
-const result = await build({ entryPoints: ['apps/probe-stdio.ts'], bundle: true,
+const result = await build({ entryPoints: { stdio: 'apps/probe-stdio.ts', http: 'apps/probe.ts' }, bundle: true,
   platform: 'node', target: 'node22', format: 'cjs', minify: true,
-  legalComments: 'linked', outfile: 'probe/stdio.cjs', metafile: true });
+  legalComments: 'linked', outdir: 'probe', outExtension: { '.js': '.cjs' }, metafile: true });
 const packages = new Set(Object.keys(result.metafile.inputs)
   .filter(path => path.startsWith('node_modules/'))
   .map(path => { const parts = path.split('/'); return parts.slice(1, parts[1].startsWith('@') ? 3 : 2).join('/'); }));
-let notices = 'Third-party licenses for the generated probe/stdio.cjs bundle.\nRegenerate with npm run build:probe; do not edit the bundle manually.\n';
+let notices = 'Third-party licenses for the generated probe/*.cjs bundles.\nRegenerate with npm run build:probe; do not edit the bundle manually.\n';
 for (const name of [...packages].sort()) {
   const root = `node_modules/${name}`;
   const pkg = JSON.parse(await readFile(`${root}/package.json`, 'utf8'));

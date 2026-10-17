@@ -46,3 +46,11 @@ Local reproduction: launching the original `node --import tsx apps/probe.ts` fro
 Fix: `.mcp.json` launches a checked-in SDK-based Node bundle, `probe/stdio.cjs`, with no npm runtime dependencies. The build includes third-party notices and CI regeneration checks. A regression test copies the checkout's probe/config/source into an isolated temporary directory without node_modules, then uses the exact configured command to initialize, list tools and call ping. It failed before the fix and passes afterward. Cloud native discovery must be tested again on the new commit; full startup stderr is needed if it still fails. Do not replace native discovery with a shell/SDK invocation in that cloud acceptance test.
 
 Post-fix verification: typecheck, full 13-test suite, mock demo and TypeScript build pass locally. The isolated cold-checkout regression also passed using Node 22.22.0 (`npm exec --yes --package=node@22.22.0 -- node --import tsx --test test/cold-start.test.ts`), matching the reported cloud version. Native cloud startup remains unverified until the next operator test.
+
+## Native cloud ping and Railway preparation
+
+The operator subsequently reported native tool discovery and a successful `mcp__bridge-probe__ping` call after the cold-start fix, with the expected read-only result and no shell/SDK substitute. This establishes native STDIO loading for the reported cloud session. It does not establish remote HTTP or identity.
+
+Railway was selected for remote hosting. `railway.json`, the root Dockerfile, a standalone HTTP bundle, configurable probe-only bind host, and `/health` support prepare the next test. No Railway account is connected in this workspace, and no public deployment or remote cloud HTTP success is claimed. See `RAILWAY_SETUP.md`.
+
+Railway preparation validation: all 14 automated tests, typecheck, mock demo and TypeScript build passed. The Dockerfile built successfully; the resulting non-root, read-only-container smoke test passed `/health`, real HTTP MCP initialization, ping-only tool enumeration and ping on Node v22.23.3. The test container was stopped afterward. This is local container evidence, not a live Railway deployment.

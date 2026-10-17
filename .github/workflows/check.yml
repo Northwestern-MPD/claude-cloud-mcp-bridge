@@ -16,3 +16,4 @@ jobs:
       - run: npm test
       - run: npm run dev:mock
       - run: npm run build
+      - run: docker build -t bridge-probe .
