@@ -4,6 +4,10 @@ A working **local mock vertical slice**, plus a harmless MCP compatibility probe
 
 **Status:** mock routing is implemented and tested. Production OAuth/OIDC, persistence, public TLS hosting, a real Blender adapter, and Anthropic-hosted integration are not implemented/verified. Do not deploy the mock gateway publicly.
 
+## Continue development locally
+
+Start with [docs/HANDOFF.md](docs/HANDOFF.md) for verified status, local setup and the remaining work in execution order. No prior chat transcript is needed.
+
 ## Run
 
 Node 22+ and npm:

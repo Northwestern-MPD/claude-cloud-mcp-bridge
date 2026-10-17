@@ -1,0 +1,212 @@
+# Local development handoff — Claude Cloud ↔ Local Blender MCP Bridge
+
+Updated: October 17, 2026 (America/Chicago). This file is the continuation brief; the prior chat transcript is not required.
+
+## Resume here
+
+The immediate task is **deploy the existing ping-only service to Railway, then prove that an actual Claude Code cloud session can discover and invoke it over HTTPS**. Native STDIO MCP has already succeeded in Claude Cloud. Remote HTTPS MCP, real authentication, and control of laptop Blender have not been verified.
+
+Repository: https://github.com/Northwestern-MPD/claude-cloud-mcp-bridge
+
+Work from **`main`**, which now contains the implementation. The implementation was merged directly, without a PR. At handoff preparation, the latest implementation/setup commit was `a05e80b`; this handoff is committed after it. The old `codex/bridge-mock-pilot` branch can remain, but new deployments and sessions should use main.
+
+User preferences:
+- Railway is the chosen host. Keep the pilot inexpensive: one service/replica initially, no Redis or Kubernetes.
+- User is a solo developer and explicitly prefers direct merges/pushes to main; do not introduce a PR requirement.
+- User wants to continue locally with this file instead of copying the whole transcript.
+- User requested browser assistance and reported signing into Railway in the desktop app's built-in browser. **No browser-control tool was exposed to the cloud agent.** Discover actual local browser capabilities before offering to control it. Do not repeat speculative instructions about unavailable Work/local switches. Ask the user to handle login in the browser if needed, never paste credentials.
+
+## Product goal and scope
+
+Students run independent Claude Code sessions on Anthropic-hosted cloud infrastructure. They share standardized environment configurations, but each student controls Blender on their own laptop through an explicitly activated, authenticated local connector.
+
+A cloud environment is reusable configuration, not a shared VM or proof of student/team identity. No Claude Tags, shared channel identity, per-student SSH VMs, inbound laptop connections, public Blender sockets, remote desktop, arbitrary shell tools, or arbitrary TCP forwarding.
+
+Intended production flow:
+
+```text
+Individual Claude Code cloud session
+  → authenticated HTTPS MCP gateway on Railway
+  → approved lease for a specific owned device
+  → existing outbound WSS connection from that laptop
+  → local STDIO Blender MCP adapter
+  → Blender add-on on laptop loopback only
+```
+
+Decisive success: a student approves pairing locally, reads their real scene, approves a simple object change and sees it in Blender, then retrieves a real viewport screenshot. Another student or unrelated cloud session must not inherit that control.
+
+## What actually works
+
+| Component | Implementation / evidence |
+|---|---|
+| Mock bridge policy | In-memory users, provisioned teams, devices, pairings, leases, capability checks and revocation |
+| Local mock transport | Real MCP Streamable HTTP and real outbound WebSocket connectors, both loopback-only |
+| Consent controls | Pairing approval callbacks, narrowed grants, per-code approval, lease expiry, write exclusion, request/lease/epoch correlation |
+| Fake Blender | Deterministic scene reads, `mock:add_cube` mutation, fixed 1×1 PNG screenshot fixture; no Python execution |
+| Mock demo | Two fixture students in different teams; owner-only reads, cross-team denial, revocation; scripted fixture consent, no real sign-in |
+| Native cloud STDIO probe | User reported successful discovery and invocation of `mcp__bridge-probe__ping` through Claude's native MCP interface |
+| HTTP probe | Ping-only server with `/health`, stateless POST `/mcp`, and configurable probe bind; locally tested with actual MCP clients |
+| Railway packaging | Root Dockerfile, railway.json, committed HTTP SDK bundle, non-root runtime; built and smoke-tested locally on Node 22 |
+| GitHub CI | Workflow is present. Remote results were unavailable through the accessible APIs; do not claim remote CI passed |
+
+Latest local verification before the main merge passed: **14 tests**, typecheck, bundle regeneration with no artifact drift, TypeScript build, mock demo and Docker build. Earlier container smoke testing verified `/health`, HTTP MCP initialization, a ping-only catalogue and ping on Node v22.23.3. These are local checks, not a live Railway test.
+
+Successful native Claude Cloud result, as reported by user:
+
+```json
+{"pong":true,"mode":"compatibility-probe","desktop_access":false}
+```
+
+Native cloud discovery initially failed because the repo was not on the session's starting branch. It later failed with `CONNECTION_CLOSED`; a clean-checkout reproduction found a missing `tsx` dependency. The fix was a committed self-contained SDK bundle. **Do not revert `.mcp.json` to `node --import tsx apps/probe.ts`**: that depends on npm installation finishing before MCP discovery.
+
+## Current code map
+
+- `.mcp.json`: working local/cloud **STDIO** probe, `node probe/stdio.cjs`. It does not reference a Railway URL yet.
+- `.claude/settings.json`: SessionStart hook runs `npm ci --ignore-scripts` for the full project. The bundled probe does not depend on that hook.
+- `apps/probe-stdio.ts`: standalone STDIO probe source.
+- `apps/probe.ts`: HTTP probe source (also supports STDIO); configurable `PROBE_HOST`, default `127.0.0.1`, public bind allowed only for this ping service.
+- `scripts/build-probe.mjs`: bundles the SDK-based STDIO and HTTP probes and generates third-party license notices.
+- `probe/stdio.cjs`, `probe/http.cjs`, license/notice files: committed runtime artifacts. Regenerate and commit these when their source changes. CI checks artifact drift.
+- `Dockerfile`: Node 22, copies **HTTP probe only**, runs as Node user, sets `PROBE_HOST=0.0.0.0` and `NODE_ENV=production`. No dependency install or mock gateway startup.
+- `railway.json`: Dockerfile build, `/health` readiness check, bounded failure restart policy.
+- `packages/core.ts`: mock policy engine and transient identity/credential stores. This is not a production database/auth layer.
+- `packages/protocol.ts`: fixed tool schemas, wire validation, bounds, result types and controlled errors.
+- `apps/gateway/server.ts`: loopback mock MCP gateway/agent channel. Mock credentials verified every request; Host/Origin checks, caps and heartbeat.
+- `apps/gateway/main.ts`: mock-only entrypoint; rejects production mode.
+- `apps/connector/connector.ts`: WebSocket client, fake adapter, consent callbacks, lease/capability/deadline/epoch checks, deduplication and busy guard.
+- `apps/connector/main.ts`: interactive mock CLI; requires a fixture identity/token from a local harness. It is not a working student OAuth enrollment flow.
+- `apps/demo.ts`: supported self-contained mock demo; exits after its checks and prints no fixture tokens.
+- `test/`: policy, transport, cold-start and Railway probe regression coverage.
+- `examples/remote-probe.mcp.json`: HTTP config shape with a placeholder hostname; merge a real entry with the working STDIO entry later.
+
+Fixed mock tools: `bridge_status`, `request_blender_pairing`, `blender_get_scene_info`, `blender_get_object_info`, `blender_get_viewport_screenshot`, `blender_execute_code`, `disconnect_blender`. The public probe exposes **only `ping`**.
+
+## Get running locally
+
+Node 22+ and npm required; Docker needed only for container checks.
+
+New checkout:
+
+```sh
+git clone https://github.com/Northwestern-MPD/claude-cloud-mcp-bridge.git
+cd claude-cloud-mcp-bridge
+git switch main
+npm ci --ignore-scripts
+npm run typecheck
+npm test
+npm run dev:mock
+npm run build
+```
+
+If the repository is already cloned, check `git status` first, preserve local changes, and use `git pull --ff-only origin main` on a clean main branch rather than cloning over existing work.
+
+To rebuild probe artifacts: `npm run build:probe`, then inspect `git diff -- probe/` and commit expected generated changes alongside source changes. No npm install is needed to run `node probe/stdio.cjs` or `node probe/http.cjs --http` from a fresh checkout.
+
+Local Docker smoke path:
+
+```sh
+docker build -t bridge-probe .
+docker run --rm -p 127.0.0.1:3334:3334 -e PORT=3334 bridge-probe
+```
+
+Health URL: `http://127.0.0.1:3334/health`. Container public binding is only for the harmless probe; the host mapping above remains loopback-only.
+
+## Remaining work, in execution order
+
+### 1. Complete Railway remote ping — immediate next action
+
+No Railway service ID, deployment URL or generated domain was recorded. The user has a Railway account and reported signing in. **Check whether a service already exists before creating a duplicate.** Railway is not connected as an app in this cloud workspace.
+
+Follow [RAILWAY_SETUP.md](RAILWAY_SETUP.md):
+
+- Deploy `Northwestern-MPD/claude-cloud-mcp-bridge` from **main**, root `/`.
+- Use the repository's Dockerfile/railway.json. No manual build/start override, secrets, database or volume needed for this probe. One service and replica.
+- Railway supplies `PORT`; Docker supplies the probe bind and production environment setting.
+- Generate a Railway public domain; use managed HTTPS without buying a custom domain.
+- Confirm HTTPS `/health` returns `status: ok`, `mode: compatibility-probe`, `desktop_access: false`.
+- `/mcp` is the MCP endpoint; browser GET returning 405 is expected, not a failed deployment.
+- Review usage/budget controls with the user; do not add paid database services yet.
+- Record the domain and deployed commit in this handoff/verification notes. Never record tokens.
+
+Add the real HTTPS `/mcp` URL as a separately named **`bridge-remote-probe`** in project MCP config or a claude.ai custom connector. Keep STDIO `bridge-probe` for comparison. For direct project-config egress, add the exact Railway hostname to the Anthropic environment's Custom allowlist with package-manager defaults included. Connector delivery is a different path; verify it rather than conflating the two.
+
+Start a fresh cloud session from the config-containing branch and request:
+
+```text
+Discover bridge-remote-probe and call its ping tool through this session's
+native MCP interface. Do not call the local bridge-probe instead and do
+not substitute a shell or SDK invocation. Report the exact server name,
+result, and connection errors if any.
+```
+
+Done when **native remote HTTPS** ping succeeds and succeeds again after a session/service restart. Record real evidence. The prior successful native ping was STDIO inside the VM, not this test.
+
+### 2. Implement and verify individual identity and durable authorization
+
+The current credentials are mock fixture bearers, not OIDC. Before any public desktop tool:
+
+- Select the operator-approved OIDC provider and register required applications. No provider or client registrations are chosen yet.
+- Implement the MCP OAuth-facing flow/protected resource metadata and external OIDC login as appropriate. Validate issuer, stable subject, audience, scope, expiration, refresh and revocation.
+- Establish exactly what individual principal a real Anthropic connector presents. Do not assume an immutable Claude session ID is forwarded.
+- Verify two simultaneous cloud sessions of the same user. The mock binds a lease to a gateway-generated MCP connection plus principal and conflicts on a separately initialized second connection. **It does not prove separation when two cloud sessions reuse the same token/transport.** Resolve this with a tested authenticated session/grant mechanism before shipping.
+- Persist users, explicitly provisioned team memberships, enrolled devices, credential fingerprints, pairing requests, leases/epochs and metadata-only audit events. Choose a single-instance persistent store deliberately (SQLite plus volume or a managed DB); no durable store exists now.
+- Design credential storage/rotation/revocation and Mac/Windows OS keychain support. Do not persist raw credentials in logs or commit them.
+- Add actual production endpoints/transport separately; keep fixture authentication local-only.
+
+Done when separate real accounts, invalid audience/issuer/scope, expired/revoked credentials, disabled users and same-user concurrent sessions have verified outcomes, including safe restart behavior.
+
+### 3. Implement the production laptop connector and WSS relay
+
+- Add browser-based individual sign-in, device enrollment, explicit per-work-session activation and outbound authenticated WSS.
+- Local pairing UI/CLI must show verified requester/team, requested capabilities, expiry and exact high-risk code for approval.
+- Maintain single-use pairing, owner consent, expiration, immediate revocation, lease epoch/correlation/deadline checks, exclusive writes and no mutation replay after reconnect.
+- Use one Railway instance for the pilot. No silent failover to another device. No arbitrary destination host, executable or MCP URL from tool arguments.
+- Exercise local mock adapters through the real hosted, authenticated path before involving Blender.
+
+Done when two real users/devices cannot cross-route, revoke takes effect immediately, and reconnect requires a valid newly approved grant as policy dictates.
+
+### 4. Integrate real Blender on the user's Mac, then Windows
+
+- Pin and review a maintained local Blender MCP implementation. Prior source review used `ahujasid/blender-mcp`, commit `7a0373ec9199183cb460068c4f96aed9c579fb4f`; it is a reference snapshot, not an installed or validated adapter.
+- Recheck current tool names, supported Blender versions, protocol/framing, screenshot return format, telemetry and license/dependency status before selecting a release.
+- Launch the reviewed local MCP adapter over STDIO from trusted local configuration. Keep the add-on listener loopback-only (commonly port 9876); prove actual binding rather than trusting the default hostname.
+- Map the fixed public `blender_*` tools to the chosen upstream tool names. Some upstream observation wrappers internally execute Python; review read/write classification per adapter.
+- Demonstrate real scene/object reads, a bounded real viewport image, then a simple object modification after local consent. The current screenshot is a fixture and mock mutation is not Python.
+- Arbitrary Blender Python implies laptop code execution. It must remain OFF by default, separately granted and approved for each execution; static filtering is not a sandbox.
+
+Done when a real Anthropic cloud tool call visibly changes the approved student's local Blender scene and returns a real screenshot, with another student/session denied.
+
+### 5. Pilot hardening and distribution
+
+- Cross-team and same-team/different-owner end-to-end tests with two real student accounts/laptops; forged tool fields, stale codes/leases, wrong response/device, disconnects, deadlines and overlapping writes.
+- Token rotation, lost-device revocation, membership/user disable, process restarts, uncertain mutation outcomes and no queued replay.
+- Bounded payload/image transfer, controlled errors, production rate limits/Origin checks, metadata-only logging, retention and basic metrics.
+- Student/instructor setup, backups/restore/rollback/shutdown runbook, provisioning tools, dependency/license audit, packaged Mac/Windows connector. Native UI/signed installers can follow CLI pilot usability.
+
+Done when the pilot can be installed, operated, revoked and recovered by someone other than the implementer, with honest test evidence and documented residual risks.
+
+## Authorization rules to preserve
+
+Keep five concepts separate: verified user, explicitly provisioned team, enrolled device, cloud principal, approved pairing/lease. Names, environment labels, model assertions and tool arguments are not authentication.
+
+A team-wide bearer key must never authorize desktop access. A pairing code is only a request identifier, not authority to execute. Sharing a team does not grant control of someone else's laptop; the MVP is owner-only. Device selection happens through local approval, not a model-provided device ID.
+
+Every tool invocation must enforce valid principal, current membership/owner, matching active lease/context, capability, expiration, device liveness and write policy. Connector must independently enforce consent/enabled state and request envelope. No automatic mutating retry; disconnect may mean `EXECUTION_UNCERTAIN`, not a guarantee of cancellation or rollback.
+
+The working mock is development evidence, not production authentication. **Do not expose `gateway:mock` on Railway to advance the demo.** The deployed probe may be public and unauthenticated solely because its fixed ping result has zero desktop authority.
+
+## Supporting references and maintenance
+
+Read this file first, then:
+- [RAILWAY_SETUP.md](RAILWAY_SETUP.md): exact current deployment procedure.
+- [PHASE0_VERIFICATION.md](PHASE0_VERIFICATION.md): chronological evidence and upstream review notes. Early entries describe earlier states; later evidence supersedes them.
+- [ARCHITECTURE.md](ARCHITECTURE.md), [THREAT_MODEL.md](THREAT_MODEL.md), [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md): current scope and limitations.
+- [CLOUD_TEST.md](CLOUD_TEST.md): environment settings and probe distinction.
+
+The original 27 KB technical PRD was supplied as `claude_cloud_local_mcp_bridge_handoff.md` in the old conversation. Its critical product/security requirements and unfinished milestones are captured here; the original attachment is not required to resume immediate work.
+
+Update this handoff as milestones are actually verified. Distinguish implementation, automated/mock evidence, user-reported cloud results, and direct physical-cloud/Blender evidence. Do not claim an unobserved deployment, auth property or test succeeded.
+
+## Suggested first message in the local session
+
+> Read docs/HANDOFF.md and inspect the current repository. Continue with the first incomplete milestone: Railway deployment and a native remote HTTPS MCP ping from Claude Code cloud. Check the user's existing Railway service before creating anything. Use browser control only if this session actually exposes it. Keep the public deployment ping-only until individual authentication and grants are implemented. Work from main; the user prefers direct pushes without PRs. Report completed checks and concrete blockers, and update the handoff as you go.
