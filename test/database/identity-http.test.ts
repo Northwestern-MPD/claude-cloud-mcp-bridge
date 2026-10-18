@@ -280,3 +280,65 @@ test('owner loss during startup refuses the listener before admission', async t 
   const unavailableStore = { ...f.store, onUnavailable(listener: () => void) { listener(); return () => undefined; } };
   await assert.rejects(startIdentityServer({ config: f.config, store: unavailableStore, runtime: f.runtime, verify: token => verifyToken(f, token) }), /STORE_UNAVAILABLE/);
 });
+
+// Break caught: a server restart returns 403 for a stale handle, preventing client reinitialization.
+test('restart returns 404 for the old session and permits a fresh SDK session with the same bearer', async t => {
+  const f = await identityFixture(t);
+  const { transport } = await f.sdk();
+  const oldSession = transport.sessionId!;
+  const oldBoot = f.store.bootId;
+  const restarted = await f.restart();
+  assert.notEqual(restarted.store.bootId, oldBoot);
+  for (const method of ['GET', 'POST', 'DELETE']) {
+    const response = await f.request('/mcp', { method, headers: { ...jsonHeaders, 'mcp-session-id': oldSession }, ...(method === 'POST' ? { body: rpc(300, 'tools/list') } : {}) });
+    assert.equal(response.status, 404);
+  }
+  // Even initialize cannot silently adopt the obsolete handle.
+  const staleInitialize = await f.request('/mcp', { method: 'POST', headers: { ...jsonHeaders, 'mcp-session-id': oldSession }, body: rpc(301, 'initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'restart-test', version: '1' } }) });
+  assert.equal(staleInitialize.status, 404);
+  const fresh = await f.sdk();
+  assert.notEqual(fresh.transport.sessionId, oldSession);
+  const result = await fresh.client.callTool({ name: 'class_identity', arguments: {} });
+  assert.equal(result.isError, undefined);
+  assert.deepEqual(result.structuredContent, { userId: (await f.db.admin.query('SELECT id FROM mpd_identity.users')).rows[0].id, resource: f.config.auth.resource, courseIds: [f.courseId], teamIds: [f.teamId], desktop_access: false });
+  const contexts = await f.db.admin.query("SELECT id FROM mpd_identity.work_contexts WHERE state='active'");
+  assert.deepEqual(contexts.rows.map(row => row.id), [fresh.transport.sessionId]);
+});
+
+// Break caught: missing sessions bypass authentication, enrollment or token revocation checks.
+test('unknown sessions require current bearer authority before returning 404', async t => {
+  const f = await identityFixture(t);
+  const headers = { ...jsonHeaders, 'mcp-session-id': 'unknown-session' };
+  assert.equal((await f.request('/mcp', { method: 'POST', headers, body: rpc(310, 'tools/list') })).status, 404);
+  for (const [authorization, status] of [
+    ['', 401],
+    [`Bearer ${await f.signing.mint({ sub: 'auth0|uninvited' })}`, 403],
+    [`Bearer ${await f.signing.mint({ exp: Math.floor(f.clock() / 1000) - 1 })}`, 401],
+  ] as const) {
+    assert.equal((await f.request('/mcp', { method: 'POST', headers: { ...headers, Authorization: authorization }, body: rpc(311, 'tools/list') })).status, status);
+  }
+  await f.db.admin.query("INSERT INTO mpd_identity.token_denials(fingerprint,expires_at,reason) VALUES($1,$2,'test')", [createHash('sha256').update(f.bearer).digest('hex'), f.clock() + 600_000]);
+  assert.equal((await f.request('/mcp', { method: 'POST', headers, body: rpc(312, 'tools/list') })).status, 401);
+  assert.equal((await f.db.admin.query('SELECT count(*) FROM mpd_identity.work_contexts')).rows[0].count, '0');
+});
+
+// Break caught: expiry returns 403 until the sweeper runs or another client can retire the owner's handle.
+test('expired sessions require owner binding then retire with 404 before the sweeper runs', async t => {
+  const f = await identityFixture(t);
+  const longBearer = await f.signing.mint({ exp: Math.floor(f.clock() / 1000) + 7200 });
+  // Raw initialize avoids the SDK opening a concurrent owner GET as the clock advances.
+  const initialized = await f.request('/mcp', { method: 'POST', headers: { ...jsonHeaders, Authorization: `Bearer ${longBearer}` }, body: rpc(319, 'initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'expiry-test', version: '1' } }) });
+  assert.equal(initialized.status, 200);
+  const session = initialized.headers.get('mcp-session-id')!;
+  await initialized.json();
+  f.advance(3_600_000);
+  const wrongClient = await f.signing.mint({ azp: 'other-client', exp: Math.floor(f.clock() / 1000) + 7200 });
+  const denied = await f.request('/mcp', { method: 'POST', headers: { ...jsonHeaders, 'mcp-session-id': session, Authorization: `Bearer ${wrongClient}` }, body: rpc(320, 'tools/list') });
+  assert.equal(denied.status, 403);
+  assert.equal(f.runtime.isActive(session), true);
+  const expired = await f.request('/mcp', { method: 'POST', headers: { ...jsonHeaders, 'mcp-session-id': session, Authorization: `Bearer ${longBearer}` }, body: rpc(321, 'tools/list') });
+  assert.equal(expired.status, 404);
+  assert.equal(f.runtime.isActive(session), false);
+  const fresh = await f.sdk(longBearer);
+  assert.equal((await fresh.client.callTool({ name: 'class_identity', arguments: {} })).isError, undefined);
+});

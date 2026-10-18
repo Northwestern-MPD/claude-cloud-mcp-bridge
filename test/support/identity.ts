@@ -37,8 +37,9 @@ export async function identityFixture(t: TestContext, options: { enrolled?: bool
     database: { connectionString: db.appUrl, transportMode: 'local-test', expectedStoreId: storeId, maintenance: false, deploymentEpoch: 'http-test', tokenIatAfter: options.cutoff ?? 0 },
     externalOrigin: 'https://bridge.example', allowedOrigins: ['https://bridge.example'], host: '127.0.0.1', port: 0, maintenance: false, adminSocketPath: '/tmp/mpd-identity-test/admin.sock',
   };
-  const server = await startIdentityServer({ config, store, runtime, verify: token => verifyAccessToken(token, config.auth, signing), clock });
-  closes.push(() => server.close());
+  let server = await startIdentityServer({ config, store, runtime, verify: token => verifyAccessToken(token, config.auth, signing), clock });
+  const initialServer = server;
+  closes.push(() => initialServer.close());
   const bearer = await signing.mint();
   const headers = { Host: 'bridge.example', Authorization: `Bearer ${bearer}` };
   async function request(path: string, init: RequestInit = {}) {
@@ -51,7 +52,18 @@ export async function identityFixture(t: TestContext, options: { enrolled?: bool
     closes.push(() => client.close());
     return { client, transport };
   }
-  return { db, store, runtime, config, server, signing, headers, bearer, courseId, teamId, clock, advance(ms: number) { nowMs += ms; }, request, sdk };
+  async function restart() {
+    await server.close();
+    await store.close();
+    const restartedStore = await openAuthorizationStore({ ...config.database, now: clock });
+    closes.push(() => restartedStore.close());
+    const restartedRuntime = createIdentityRuntime(restartedStore);
+    server = await startIdentityServer({ config, store: restartedStore, runtime: restartedRuntime, verify: token => verifyAccessToken(token, config.auth, signing), clock });
+    const restartedServer = server;
+    closes.push(() => restartedServer.close());
+    return { store: restartedStore, runtime: restartedRuntime, server: restartedServer };
+  }
+  return { db, store, runtime, config, server, signing, headers, bearer, courseId, teamId, clock, advance(ms: number) { nowMs += ms; }, request, sdk, restart };
 }
 
 // Node22 fetch replaces caller Host with the connection host. This real HTTP adapter

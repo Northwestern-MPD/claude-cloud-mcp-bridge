@@ -32,12 +32,12 @@ test('identity transport enforces method initialization and deletes an owned aut
   assert.equal((await f.request('/mcp', { method: 'PUT', headers: jsonHeaders, body: '{}' })).status, 405);
   assert.equal((await f.request('/mcp', { headers: { Accept: 'text/event-stream' } })).status, 400);
   assert.equal((await f.request('/mcp', { method: 'POST', headers: jsonHeaders, body: rpc(1, 'tools/list') })).status, 400);
-  assert.equal((await f.request('/mcp', { method: 'POST', headers: { ...jsonHeaders, 'mcp-session-id': randomUUID() }, body: rpc(2, 'tools/list') })).status, 403);
+  assert.equal((await f.request('/mcp', { method: 'POST', headers: { ...jsonHeaders, 'mcp-session-id': randomUUID() }, body: rpc(2, 'tools/list') })).status, 404);
   const { transport } = await f.sdk();
   const id = transport.sessionId!;
   assert.equal((await f.request('/mcp', { method: 'DELETE', headers: { ...jsonHeaders, 'mcp-session-id': id } })).status, 200);
   assert.equal((await f.db.admin.query('SELECT state FROM mpd_identity.work_contexts WHERE id=$1', [id])).rows[0].state, 'revoked');
-  assert.equal((await f.request('/mcp', { method: 'POST', headers: { ...jsonHeaders, 'mcp-session-id': id }, body: rpc(3, 'tools/list') })).status, 403);
+  assert.equal((await f.request('/mcp', { method: 'POST', headers: { ...jsonHeaders, 'mcp-session-id': id }, body: rpc(3, 'tools/list') })).status, 404);
 });
 
 // Break caught: missing/incorrect media type bypasses the protected parser or harmless no-argument requests are rejected.

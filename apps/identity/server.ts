@@ -62,7 +62,12 @@ export async function startIdentityServer(options: {
     return evidence.auth;
   }
   async function checkSession(session: Session, auth: VerifiedRequestAuth): Promise<void> {
-    if (!runtime.isActive(session.context.id) || session.expiresAt <= clock() || session.issuer !== auth.principal.issuer || session.subject !== auth.principal.subject || session.context.clientId !== auth.principal.clientId || session.context.resource !== auth.resource) throw new PolicyError('CONTEXT_DENIED');
+    if (session.issuer !== auth.principal.issuer || session.subject !== auth.principal.subject || session.context.clientId !== auth.principal.clientId || session.context.resource !== auth.resource) throw new PolicyError('CONTEXT_DENIED');
+    if (session.expiresAt <= clock()) {
+      removeSession(session.context.id);
+      throw new HttpError(404, 'SESSION_NOT_FOUND');
+    }
+    if (!runtime.isActive(session.context.id)) throw new PolicyError('CONTEXT_DENIED');
     await assertTransportContext(store, session.context, auth, clock);
   }
   async function identityForTool(session: Session) {
@@ -123,7 +128,9 @@ export async function startIdentityServer(options: {
         const sessionHeader = req.headers['mcp-session-id'];
         if (Array.isArray(sessionHeader)) throw new HttpError(400, 'INVALID_SESSION');
         const session = sessionHeader ? sessions.get(sessionHeader) : undefined;
-        if (sessionHeader && !session) throw new PolicyError('CONTEXT_DENIED');
+        // A lost transport (including after restart) requires a fresh initialize.
+        // Authentication and enrollment above remain mandatory for this response.
+        if (sessionHeader && !session) throw new HttpError(404, 'SESSION_NOT_FOUND');
         if (session) { await checkSession(session, auth); observedContext = session.context.id; }
         return { view, session };
       });
