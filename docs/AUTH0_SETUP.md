@@ -1,6 +1,6 @@
 # Auth0 and private operator setup
 
-Status: local contracts and disposable tests are implemented; hosted acceptance remains pending. The new tenant is `dev-exz4k4zrf6whdd7s.us.auth0.com`. The fixed Action is deployed/bound, and an invited-only email connection plus isolated development client are configured. The operator authorized two test accounts and confirmed Auth0 built-in emails reached both inboxes. No external SMTP service is available. The first account has completed hosted email-code sign-in and an operator-reported native class_identity call. Provider email suppression, the second account and refresh/session checks remain pending. See [the verification record](IDENTITY_VERIFICATION.md) for exact evidence and pending gates.
+Status: local contracts and disposable tests are implemented; hosted acceptance remains pending. The new tenant is `dev-exz4k4zrf6whdd7s.us.auth0.com`. The fixed Action is deployed/bound, and an invited-only email connection plus isolated development client are configured. The operator authorized two test accounts and confirmed Auth0 built-in emails reached both inboxes. No external SMTP service is available. Both authorized accounts have completed operator-reported native class_identity calls, returning different users/teams, the same course and desktop access disabled. Provider email suppression and refresh/revocation/session checks remain pending. See [the verification record](IDENTITY_VERIFICATION.md) for exact evidence and pending gates.
 
 ## Tenant, email and API
 

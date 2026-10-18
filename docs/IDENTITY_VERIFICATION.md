@@ -1,6 +1,6 @@
 # Milestone 2 verification record
 
-Status: **local implementation and identity-only hosted release verified; full milestone acceptance blocked**. Native gate remains `IDENTITY_NATIVE_BLOCKED` pending second-account, refresh/revocation and session checks. The first account completed hosted sign-in and an operator-reported native identity call. Local evidence does not establish native Claude OAuth or separation between simultaneous cloud sessions. Public desktop tools remain disabled.
+Status: **local implementation and identity-only hosted release verified; full milestone acceptance blocked**. Native gate remains `IDENTITY_NATIVE_BLOCKED` pending refresh/revocation and session checks. Both authorized accounts completed operator-reported native identity calls with distinct users/teams and the same course. Local evidence does not establish native Claude OAuth or separation between simultaneous cloud sessions. Public desktop tools remain disabled.
 
 ## Auth0 development evidence
 
@@ -29,7 +29,7 @@ The operator reported Claude authorization failure reference `ofid_a445136ad6b9b
 
 Email was the only enabled connection, but New Universal Login had `identifier_first` unset. Auth0 documents this profile combination as unsupported for passwordless email. A fresh diagnostic request using the observed OAuth parameters reproduced the callback error before mutation. The operator changed only `prompts.identifier_first` to true and re-fetched the setting. The same request then returned 200 at `/u/login/identifier` with an email input and without the prior connection error. No real email, code or token was submitted by this diagnostic check. Raw provider events, temporary state/verifier and HTML remain in protected operator records. [Auth0 documented cause and requirement](https://support.auth0.com/center/s/article/no-connections-enabled-for-the-client).
 
-The retry subsequently succeeded. The operator confirmed completing the email-code connector sign-in, and Auth0 recorded successful login plus code exchange. The first native tool result is recorded next. Full hosted OAuth/native acceptance still requires the remaining account, refresh and session checks.
+The retry subsequently succeeded. The operator confirmed completing the email-code connector sign-in, and Auth0 recorded successful login plus code exchange. The first native tool result is recorded next. Full hosted OAuth/native acceptance still requires refresh/revocation and session checks.
 
 ### First native identity result — account A
 
@@ -37,7 +37,11 @@ After the prompt fix, Auth0 recorded a successful email login at 19:42:11 UTC an
 
 The full reported result, including the internal user UUID, is retained only in protected `native-account-a-result.json`. Repository evidence omits personal identifiers. This is operator-reported native evidence, supported by provider login/exchange records and matching invitation configuration; it is not a parent shell/SDK call. The deployed verifier was exercised by the successful request; no access/refresh token or authorization code was requested from the user or copied into this record. The exact client version, native server identifier and cloud-session commit were not supplied. Serving commit remains 355ba95.
 
-A private-window reconnect using the other explicitly authorized test email and a fresh native call has been requested. That result, supported refresh/revocation tests and same-user simultaneous-session isolation remain pending. One successful identity call does not enable desktop authority or complete the milestone.
+### Second native identity result — account B
+
+In reply to the private-window reconnect and fresh native cloud call request, the operator reported another successful `class_identity` result. It matched the exact resource and account B’s invited team, returned the same course as account A, a different internal user and team, and desktop access disabled. Comparison against the protected deployment state and account A evidence passed. The full result is retained only in protected `native-account-b-result.json`; no credentials were requested. Exact native server identifier, client version and cloud-session commit were not supplied.
+
+The two-account native identity check has passed on operator-reported evidence. Refresh/revocation and same-user simultaneous-session isolation remain pending; these results do not enable desktop authority or complete the milestone.
 
 ### Reported hosted-login UX and latency
 
@@ -66,7 +70,7 @@ The reviewer accepted the narrow Railway `GET /health` hostname exception. Its e
 
 ## Railway identity deployment — October 18, 2026
 
-The approved identity-only pilot is **deployed and ready** at `https://class-identity-production.up.railway.app/mcp`. Public desktop capabilities remain disabled. Native Claude OAuth/token results and full milestone acceptance are still pending.
+The approved identity-only pilot is **deployed and ready** at `https://class-identity-production.up.railway.app/mcp`. Public desktop capabilities remain disabled. Both operator-reported native account results are recorded above; token refresh/revocation, session checks and full milestone acceptance remain pending.
 
 Project `e759a352-01af-4dd6-994d-662f809d7478`, production environment `bd25f4b4-0fa5-4eaf-9a1d-d3490edddebd`:
 
@@ -94,7 +98,7 @@ Stored maintenance was cleared through that same socket only after schema, role,
 - POST `/mcp`: 503 while maintenance was active; after release, missing and deliberately invalid bearers both returned 401 with the exact `resource_metadata` challenge URL.
 - Unapproved Origin returned 403. The existing compatibility probe still returned 200 and its fixed no-desktop result.
 
-These are direct HTTPS/operator checks, **not authenticated/native MCP evidence**. The later account A operator-reported native result is recorded above. Direct token-claim capture, refresh and same-user session results remain pending.
+These are direct HTTPS/operator checks, **not authenticated/native MCP evidence**. The later account A and B operator-reported native results are recorded above. Direct token-claim capture, refresh and same-user session results remain pending.
 
 ### Temporary access cleanup
 
