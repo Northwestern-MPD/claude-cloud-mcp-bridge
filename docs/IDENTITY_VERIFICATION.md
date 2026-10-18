@@ -15,6 +15,14 @@ Status: **local implementation verified; full milestone acceptance blocked**. Na
 - This establishes development delivery only. A completed hosted sign-in, issued access-token claim verification, refresh and native MCP invocation are pending.
 - Auth0's built-in sender is for testing. No external SMTP provider is configured; production email readiness and automatic account creation remain blocked as documented in [AUTH0_SETUP.md](AUTH0_SETUP.md).
 
+### Hosted OAuth configuration — October 18
+
+Both official CLI sign-ins were renewed successfully. Auth0 API `6ad5153e0cbf88ba082913bd` now uses exact audience `https://class-identity-production.up.railway.app/mcp`, RS256, `access_token`, 600-second API/web token lifetime and `identity:read`. Offline access is enabled.
+
+Static public Claude client `OUmVGrnlfsCIzS8JG55tBhZIgPKBTCeu` uses token endpoint authentication `none`, Authorization Code/refresh grants and callback `https://claude.ai/api/mcp/auth_callback`. Rotating refresh tokens have 7-day idle/30-day maximum expiration and zero overlap. The email connection now enables this client plus the development client; signups remain disabled and brute-force protection enabled. API/client/connection settings were re-fetched. The tenant already had resource compatibility and authorization-response issuer support enabled; CIMD stays disabled. See [Auth0 setup](AUTH0_SETUP.md) for the documented static public-client delivery path and observed API correction.
+
+No hosted token exchange, signed claim result, refresh compatibility or native identity invocation is established by these configuration writes.
+
 ## Local implementation evidence
 
 The reusable package has no storage/Blender/connector imports. Verification enforces RS256, configured issuer/resource, signed client/scopes, fixed verified-email claim and expiry. Tests cover a second independent MCP resource. PostgreSQL tests use a marked disposable PostgreSQL 17 cluster with real restricted roles and independent clients.
@@ -44,9 +52,15 @@ Project `e759a352-01af-4dd6-994d-662f809d7478`, production environment `bd25f4b4
 - Both services have one replica in `iad`, with configured limits of 1 vCPU and 500,000,000 bytes memory per container. These limits do not establish measured spend or a workspace spending cap.
 - The identity service has explicit API/dashboard configuration for `Dockerfile.identity`, `node dist/apps/identity/main.js`, `/health`, 60-second health timeout, 30-second drain and zero overlap. Railway rejects `railwayConfigFile` for new services: legacy JSON/TOML Config as Code is deprecated. The checked-in identity JSON is not consumed by this new service. [Railway configuration transition](https://docs.railway.com/infrastructure-as-code).
 
-Official Railway CLI 5.70.0 was downloaded through `gh` and its release SHA256 verified. Private database bootstrap requires authenticated CLI shell access; its browser login timed out before authorization. The previous Auth0 CLI session also expired, and renewed authorization is pending. No credential was requested in chat or added to Git.
+Official Railway CLI 5.70.0 was downloaded through `gh` and its release SHA256 verified. Both Railway and Auth0 CLI sign-ins now succeed. Private database shell access requires a registered SSH key; the account has none. Automatic approval review rejected registering a persistent personal key because its account-wide access was not specifically authorized. A dedicated Ed25519 key is prepared locally in ignored `work/identity-operator/` (directory 0700/private file 0600); it has **not** been registered. Request explicit approval for temporary workspace-wide registration, use it only for this project, and remove its Railway registration after pilot setup. No password, private key or token was copied into Git or chat.
 
-Next: complete official CLI sign-ins; verify account budget/backup entitlement; initialize and validate separate database roles/schema through the protected operator path; register the exact Auth0 resource and observed native-client callbacks; attach a reviewed commit with autodeploy disabled; configure only app-role credentials in the serving process. Keep maintenance enabled until operator checks pass. All future releases and rollbacks require explicit drain/stop/owner-lock release/start.
+Next: obtain explicit approval for the temporary SSH access change; initialize and validate separate database roles/schema through the protected operator path; attach a reviewed commit with autodeploy disabled; configure only app-role credentials in the serving process. Keep maintenance enabled until operator checks pass. All future releases and rollbacks require explicit drain/stop/owner-lock release/start.
+
+### Hosted backup entitlement and usage
+
+The actual volume instance is `7a116fb2-7202-4404-bf3d-d0528a033f04`, with observed usage 133.824512 MB on its 5000 MB volume. Its backup schedule list is empty. The approved attempt to enable DAILY backups was rejected by Railway: **"Manual backups and backup schedules are only available for Pro workspaces"**. Re-fetch confirmed no schedule was created. No subscription upgrade, PITR or alternate paid storage was enabled. Hosted backup acceptance remains blocked pending an operator-selected plan or reviewed backup approach.
+
+Railway's usage API reported current-period resource usage `$0.007874182515617285` at the October 18 check and no workspace usage limit. The billing period is October 17–November 17. This is an early usage snapshot, not a monthly operating-cost estimate; the identity app has not started. A separate `$5` agent-tooling limit exists and is not a workload spending cap. No spending cap was changed. [Railway backup schedules and incremental volume pricing](https://docs.railway.com/volumes/backups).
 
 ### GitHub CI fixture correction
 

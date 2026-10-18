@@ -14,7 +14,15 @@ When a native client needs offline access, enable its refresh-token grant and th
 
 ### Reserved pilot resource
 
-The approved identity hostname is `class-identity-production.up.railway.app`; use exactly `https://class-identity-production.up.railway.app/mcp` for its Auth0 API identifier and MCP resource. The hostname is reserved, but the app is not deployed and this API registration is not yet configured. The existing development client is not a Claude registration. Observe the actual native client and exact callbacks before configuring them. Renewal of expired Auth0 CLI authorization is pending.
+The approved identity resource is exactly `https://class-identity-production.up.railway.app/mcp`. Auth0 API `6ad5153e0cbf88ba082913bd` is registered with RS256, `access_token` profile, 600-second access lifetime for both API/web flows, `identity:read`, and offline access enabled. Configuration was re-fetched after creation. The identity app is still undeployed; configuration is not a successful sign-in.
+
+Static public client `OUmVGrnlfsCIzS8JG55tBhZIgPKBTCeu` (`MPD - Claude hosted identity pilot`) has type `native`, token authentication `none`, Authorization Code/refresh grants and the exact callback `https://claude.ai/api/mcp/auth_callback`. Refresh rotation is enabled with 7-day idle/30-day maximum expiration and zero overlap; compatibility remains to be observed. The invited-only email connection enables this client and the existing isolated development preflight client. Signups remain disabled and brute-force protection remains enabled.
+
+The tenant already reports `resource_parameter_profile=compatibility` and `authorization_response_iss_parameter_supported=true`. CIMD remains disabled. Static public registration is explicitly supported by Claude: after the service is ready, add its resource URL as a custom connector, choose **Use your own OAuth client** (or Advanced settings), enter the public client ID above and leave the optional secret blank. Claude documents PKCE S256 for this path. Each student authenticates individually with their own invited verified account; the shared public client ID grants no membership. [Claude custom connector authentication](https://claude.com/docs/connectors/custom/add-unlisted#choose-authentication-settings), [authentication requirements and callback](https://claude.com/docs/connectors/building/authentication).
+
+Claude Code cloud inherits configured claude.ai connectors and their proxy authorization; it does not perform the terminal client's loopback OAuth flow. Record this delivery path explicitly during native acceptance. The current project probe entries remain available. [Cloud connector delivery](https://code.claude.com/docs/en/mcp#how-connectors-reach-claude-code).
+
+Auth0's current API enables a client through `PATCH /api/v2/connections/{id}/clients` with `[{"client_id":"...","status":true}]`. The older `enabled_clients` property on connection PATCH was rejected. Re-fetch the client list through that same `/clients` endpoint and separately verify `disable_signup`; do not infer success from the CLI wrapper's exit status alone.
 
 ## Reuse across class MCP servers
 
