@@ -10,6 +10,8 @@ Operator-reported native identity passed for two accounts with distinct users/te
 
 The separate public HTTPS probe passed direct health/discovery/ping and operator-reported native calls before and after a verified Railway restart. STDIO and HTTP bundles support dependency-free startup. Probe success establishes neither identity nor laptop connectivity.
 
+The restart recovery bug exposed by native errors has a tested/deployed server fix at af6d8f8: authenticated/enrolled stale transport handles return404 for fresh initialization. Native client recovery is still pending; see the verification record. The platform’s first source build can still select the wrong Dockerfile despite the saved override; explicit source rebuild is the tested recovery.
+
 ## Open gates
 
 - **Session isolation:** Concurrent same-account identity usability does not prove separate authenticated work sessions, token/transport equality or copied-token/handle resistance. No account B control/copy attack was performed in the account A concurrency checks. `SESSION_ISOLATION_UNPROVEN` blocks desktop tools.

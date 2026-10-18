@@ -12,6 +12,8 @@ PostgreSQL stores identities, invitations, memberships, devices and credential f
 
 A dedicated advisory lock grants one runtime ownership. Startup validates schema/store/role, creates a new boot identity, invalidates old contexts/pairings/leases, marks devices offline and unfinished writes uncertain. Owner/database loss closes admission. Stored and external maintenance gate readiness. Deployment requires maintenance, bounded drain, incumbent stop and confirmed lock release before replacement; horizontal scaling and automatic overlapping handoff are unsupported. See [IDENTITY_OPERATIONS.md](IDENTITY_OPERATIONS.md).
 
+Transport handles remain boot-local. After authentication/enrollment, an unknown terminated handle returns404 so the client can initialize anew; an expired mapped handle is retired only after owner validation. Wrong-owner/client/resource denial remains403 and invalid/revoked bearer denial401. No stale handle is revived or tool request replayed. Native automatic recovery still requires actual evidence.
+
 Administration uses a private `0600` Unix socket inside a `0700` directory through approved authenticated operator access. Commands share the serving runtime's authorization fence for commit and invalidation. There is no public admin HTTP/MCP endpoint.
 
 ### Private observations — deployed identity-only release
