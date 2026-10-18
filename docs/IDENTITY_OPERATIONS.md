@@ -51,6 +51,10 @@ close-course records the first closure timestamp, disables the course/teams, rem
 
 The external AUTHZ_MAINTENANCE=true flag is a hard deny and cannot be cleared by the socket. Changes to that flag still follow stop/drain/lock-release/start; avoid automatic rolling deployment overlap.
 
+### Current Railway service configuration
+
+The new `class-identity` service uses API/dashboard configuration. Railway deprecated legacy `railway.json`/`railway.toml` configuration for new services and rejects opting in with `railwayConfigFile`; the existing probe still uses its legacy configuration. The identity service explicitly selects `Dockerfile.identity`, `node dist/apps/identity/main.js`, `/health`, a 60-second health timeout, 30-second drain, zero overlap, and one replica in `iad`. Its per-container limit is 1 vCPU/500,000,000 bytes memory, also applied to private Postgres. These are configured limits, not measured cost or a spending cap. Verify the live settings before connecting a pinned source commit; avoid enabling autodeploy. [Railway configuration transition](https://docs.railway.com/infrastructure-as-code).
+
 ## Daily database backups and portable export
 
 Enable daily backups on the **database service**, then record the actual Railway schedule, plan entitlement, retention, encryption/access policy and measured cost. Keep platform backup retention distinct from application row retention. PITR is optional after its availability, cost and restore drill are observed. Retain the original database for rollback; backup/restore authorization does not authorize deleting it.

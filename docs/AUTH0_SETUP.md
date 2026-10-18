@@ -12,6 +12,10 @@ Status: local contracts and disposable tests are implemented; hosted acceptance 
 
 When a native client needs offline access, enable its refresh-token grant and the API's offline-access setting, then verify that client requests and safely stores its own refresh tokens. Enable rotation and automatic reuse detection. Set finite idle and maximum expiration; pilot starting values are 7 days idle and 30 days maximum, subject to operator approval. Choose the smallest measured rotation overlap that permits the client's supported retry behavior; 0 seconds is the starting candidate, not a measured compatibility result. Record actual refresh, expired refresh and reused-token denial outcomes. The service never receives or stores refresh tokens. [Rotation and overlap](https://auth0.com/docs/secure/tokens/refresh-tokens/configure-refresh-token-rotation), [idle and maximum expiration](https://auth0.com/docs/secure/tokens/refresh-tokens/configure-refresh-token-expiration).
 
+### Reserved pilot resource
+
+The approved identity hostname is `class-identity-production.up.railway.app`; use exactly `https://class-identity-production.up.railway.app/mcp` for its Auth0 API identifier and MCP resource. The hostname is reserved, but the app is not deployed and this API registration is not yet configured. The existing development client is not a Claude registration. Observe the actual native client and exact callbacks before configuring them. Renewal of expired Auth0 CLI authorization is pending.
+
 ## Reuse across class MCP servers
 
 Reuse `packages/auth/index.ts` with a separate `AuthConfig` for each service. Share the canonical issuer/JWKS and the stable `(issuer, subject)` identity. Give each server its own exact resource URI, required scopes and approved native-client list; register that resource/API in the same Auth0 tenant. A bridge access token must not authorize a different class API. The second-resource automated tests enforce audience and scope separation.
