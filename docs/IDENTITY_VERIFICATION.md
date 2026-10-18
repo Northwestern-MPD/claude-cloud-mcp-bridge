@@ -1,6 +1,6 @@
 # Milestone 2 verification record
 
-Status: **local implementation and identity-only hosted release verified; full milestone acceptance blocked**. Native gate remains `IDENTITY_NATIVE_BLOCKED` pending revocation and session checks; account A refresh passed. Both authorized accounts completed operator-reported native identity calls with distinct users/teams and the same course. Local evidence does not establish native Claude OAuth or separation between simultaneous cloud sessions. Public desktop tools remain disabled.
+Status: **local implementation and identity-only hosted release verified; full milestone acceptance blocked**. Native gate remains `IDENTITY_NATIVE_BLOCKED` pending immediate local JWT denial, reuse/logout and session-isolation checks; account A refresh, scoped provider revocation and reconnect passed. Both authorized accounts completed operator-reported native identity calls with distinct users/teams and the same course. Local evidence does not establish native Claude OAuth or separation between simultaneous cloud sessions. Public desktop tools remain disabled.
 
 ## Auth0 development evidence
 
@@ -35,7 +35,7 @@ The retry subsequently succeeded. The operator confirmed completing the email-co
 
 After the prompt fix, Auth0 recorded a successful email login at 19:42:11 UTC and successful Authorization Code exchange at 19:42:12 UTC. The provider subject matched the preapproved account A invitation; no account linking, email-based subject transfer or manual verification was performed. The operator then reported that `class_identity` worked through the requested native tool interface. Its exact resource matched the deployed `/mcp` URL, it returned one expected pilot course and the account A team, and `desktop_access` was false.
 
-The full reported result, including the internal user UUID, is retained only in protected `native-account-a-result.json`. Repository evidence omits personal identifiers. This is operator-reported native evidence, supported by provider login/exchange records and matching invitation configuration; it is not a parent shell/SDK call. The deployed verifier was exercised by the successful request; no access/refresh token or authorization code was requested from the user or copied into this record. The exact client version, native server identifier and cloud-session commit were not supplied. Serving commit remains 355ba95.
+The full reported result, including the internal user UUID, is retained only in protected `native-account-a-result.json`. Repository evidence omits personal identifiers. This is operator-reported native evidence, supported by provider login/exchange records and matching invitation configuration; it is not a parent shell/SDK call. The deployed verifier was exercised by the successful request; no access/refresh token or authorization code was requested from the user or copied into this record. The exact client version, native server identifier and cloud-session commit were not supplied. Serving commit for those initial native checks was 355ba95.
 
 ### Second native identity result — account B
 
@@ -51,13 +51,13 @@ The operator clarified that they logged out of account B and requested that subs
 
 The initial scoped revocation preflight lacked `read:grants`. The operator completed official CLI authorization with additional read/delete-grant scopes. A fresh filtered lookup returned exactly one grant for account A, the configured public Claude client and the exact identity resource, with identity:read/offline_access. At **20:22:16 UTC (3:22:16 PM Chicago)** that exact grant was deleted by ID; a repeated filtered lookup returned zero. No user-wide, client-wide or tenant-wide deletion was performed. Raw grant metadata remains private. Already-issued access tokens are not immediately revoked by this provider operation. The operator subsequently attempted the existing native connection and reported a redirect to sign in. At **20:35:41.340 UTC (3:35:41 PM Chicago)** Auth0 recorded `fertft` for the configured client: “Token could not be decoded or is missing in DB”. This is consistent with the deleted refresh authorization and occurred after issued access tokens had expired. The failure event did not include a mapped subject, so account A correlation relies on the exact client/timing and the operator’s existing-session report. The scoped refresh-revocation check passed on this combined evidence. Reconnect restoration also passed: Auth0 recorded account A login at **20:37:51.049 UTC** and code exchange at **20:37:51.653 UTC**, both mapped to its original subject, and the exact account/client/resource grant exists again (one grant). The operator reported another successful native identity result matching A’s original user/course/team with desktop access disabled. No new account, subject linking or local authorization changes were needed. This does not establish immediate local JWT revocation or reuse detection.
 
-Private-observation limitation: the serving identity request computes a fingerprint in memory, but does not persist/expose private native request observations with fingerprint/expiry. Consequently the current release cannot prove that an identical still-valid JWT was denied after local revocation, or establish copied-token/handle equality across native chats. Do not extract Claude-held credentials or add public diagnostic tools to fill this gap. Production remains `SESSION_ISOLATION_UNPROVEN`; a reviewed private observation change is needed for the stronger evidence.
+At the time of those checks, release355ba95 lacked private fingerprint/expiry observations. The approved extension below now supplies bounded private correlations and reference-based denial; native same-token evidence is still pending. Do not extract Claude-held credentials or add public diagnostics. Production remains `SESSION_ISOLATION_UNPROVEN`.
 
 ### Concurrent native identity calls — two account A sessions
 
 The operator kept the original cloud session open, started a second session using the existing connector and reported successful `class_identity` results from the new session and then the original session. Both matched A’s original user/course/team and returned desktop access disabled; the new-session result also explicitly matched the resource. No error or sign-in prompt was reported, although prompt absence was not separately stated. Full results remain in protected `native-concurrent-account-a-results.json`.
 
-This passes concurrent same-account identity usability. It does not establish whether the connector reused the same bearer, refresh grant or MCP transport across chats, or demonstrate that desktop permissions would be bound to one work session. No copied-token/handle experiment or separately authenticated B control was performed; the operator chose A only for these checks. `SESSION_ISOLATION_UNPROVEN` remains the production result. The remaining Task 12 equality/attack evidence requires private observations and client capabilities absent from the current release; a successful identity result must not be treated as session binding.
+This passes concurrent same-account identity usability. It does not establish whether the connector reused the same bearer, refresh grant or MCP transport across chats, or demonstrate that desktop permissions would be bound to one work session. No copied-token/handle experiment or separately authenticated B control was performed; the operator chose A only for these checks. `SESSION_ISOLATION_UNPROVEN` remains the production result. The remaining Task 12 equality/attack evidence needs the newly deployed private observations plus client capabilities not yet established; a successful identity result must not be treated as session binding.
 
 ### Reported hosted-login UX and latency
 
@@ -75,9 +75,9 @@ The operator approved completing the plan’s missing private observation hooks.
 
 Focused independent review found one important reporting issue: MCP authorization errors returned as HTTP200 could appear allowed. A real-DB forced-revocation race reproduced this; request-local outcome propagation fixed it. A minor response-validation coercion was also reproduced and fixed. Parent review required automatic idle expiry and its mock-timer regression. RED/GREEN evidence remains in the execution ledger and `/tmp/mpd-private-observation-*.log`.
 
-Final local coverage passed **143 root +234 PostgreSQL tests (377 total)**, mock demo, typecheck/build and probe artifact drift. Coverage is **95.51% lines/statements, 97.01% functions and 93.32% branches**; the new observation module has 100% in all four metrics. The freshly rebuilt identity image passed **11/11 container checks**. Remote CI/deployment are recorded separately below when complete. This adds evidence collection, not a verified work-session binding; native observed-token denial remains pending deployment and an actual client repeat.
+Final local coverage passed **143 root +234 PostgreSQL tests (377 total)**, mock demo, typecheck/build and probe artifact drift. Coverage is **95.51% lines/statements, 97.01% functions and 93.32% branches**; the new observation module has 100% in all four metrics. The freshly rebuilt identity image passed **11/11 container checks**. [Linux CI39166389354 passed](https://github.com/Northwestern-MPD/claude-cloud-mcp-bridge/actions/runs/39166389354) for a42f920, including both jobs,377 tests and11 container checks. This adds evidence collection, not a verified work-session binding; native observed-token denial awaits an actual client repeat.
 
-## Local implementation evidence
+## Baseline local implementation evidence
 
 The reusable package has no storage/Blender/connector imports. Verification enforces RS256, configured issuer/resource, signed client/scopes, fixed verified-email claim and expiry. Tests cover a second independent MCP resource. PostgreSQL tests use a marked disposable PostgreSQL 17 cluster with real restricted roles and independent clients.
 
@@ -96,15 +96,23 @@ The reviewer accepted the narrow Railway `GET /health` hostname exception. Its e
 
 ## Railway identity deployment — October 18, 2026
 
-The approved identity-only pilot is **deployed and ready** at `https://class-identity-production.up.railway.app/mcp`. Public desktop capabilities remain disabled. Both operator-reported native account results are recorded above; token refresh/revocation, session checks and full milestone acceptance remain pending.
+The approved identity-only pilot is **deployed and ready** at `https://class-identity-production.up.railway.app/mcp`. Public desktop capabilities remain disabled. Both operator-reported native account results are recorded above; refresh/revocation/reconnect evidence is recorded above; immediate local denial, isolation and full milestone acceptance remain pending.
 
 Project `e759a352-01af-4dd6-994d-662f809d7478`, production environment `bd25f4b4-0fa5-4eaf-9a1d-d3490edddebd`:
 
 - Private `Postgres` service `7dc54ec7-71c3-4f33-bf2d-7f5da9f49be5`, deployment `35f201bc-1e01-403f-adaa-4a1b0cddde03`, reports SUCCESS. Actual SQL version is **17.11** (`170011`), database `identity`; image remains `ghcr.io/railwayapp-templates/postgres-ssl:17`. Volume `4fad8e5d-ba96-4113-b622-475efd21c3c7` mounts at `/var/lib/postgresql/data`. No public database domain or TCP proxy exists.
-- `class-identity` service `947ffd02-0ac5-42fb-9e95-179437cd12c9`, successful deployment `f7c87ab7-57ad-40bf-b1fb-737b93be8e9a`, is pinned to reviewed commit `355ba952341ad1fa374028ed12476420e32624cc`; later pushes do not auto-deploy. [Release CI 39156401352 passed](https://github.com/Northwestern-MPD/claude-cloud-mcp-bridge/actions/runs/39156401352). There is no app volume. Domain `class-identity-production.up.railway.app` targets 8080.
+- `class-identity` service `947ffd02-0ac5-42fb-9e95-179437cd12c9`, successful deployment `04eb389d-3542-47a2-9932-21c1806f3147`, is pinned to reviewed commit `a42f920ea04514bf7a18c5de77e91e6608e6ab86`; later pushes do not auto-deploy. [Release CI39166389354 passed](https://github.com/Northwestern-MPD/claude-cloud-mcp-bridge/actions/runs/39166389354). There is no app volume. Domain `class-identity-production.up.railway.app` targets 8080.
 - Both services retain one replica in `iad`, with configured 1 vCPU/500,000,000-byte container limits. The serving identity process is PID 1, UID 1000, Node 22.23.3. Authenticated SSH shells use root; that is separate from the serving process.
 - The first identity attempt `65acc3ee-7e7d-4639-b38c-a83a80b4c9bd` failed because Railway built the root probe Dockerfile despite `Dockerfile.identity` being present in its service manifest. Its missing-entrypoint failure acquired no database owner/request connection. The documented `RAILWAY_DOCKERFILE_PATH=Dockerfile.identity` variable corrected the build; an explicit source rebuild produced the successful deployment above. Preserve that variable. No application authentication rule was weakened. [Railway Dockerfile override](https://docs.railway.com/builds/dockerfiles#custom-dockerfile-path).
 - New services reject legacy `railwayConfigFile`; this service uses API/dashboard settings plus the Dockerfile override. Its explicit start command is `node dist/apps/identity/main.js`, health path `/health`, 60-second health timeout, 30-second drain and zero overlap. The existing probe's legacy configuration and deployment remain unchanged. [Railway configuration transition](https://docs.railway.com/infrastructure-as-code).
+
+### Private observation release rollout
+
+The incumbent f7c87ab7 was put into stored maintenance through the private socket, verified health200/ready503/admission503, then stopped by exact deployment ID. Railway reported stopped, and a private SELECT-only check confirmed **zero owner backends, zero request backends and zero granted owner locks**. Only the new pinned source SHA was staged; no variables, schema, roles, limits, domains or other services changed.
+
+The first staged-source attempt `8c594adc-4222-46cc-a7fb-3b9b317e5bda` repeated the wrong-Dockerfile platform behavior despite the effective override and saved manifest both naming Dockerfile.identity. Build logs copied only probe artifacts; startup failed before any SQL ownership. The private zero-owner check passed again. Explicit `deploymentRedeploy(usePreviousImageTag:false)` rebuilt the same verified commit into **04eb389d-3542-47a2-9932-21c1806f3147**, whose build logs copied compiled identity apps/packages/scripts and whose status is SUCCESS with stopped=false.
+
+On that serving release, health200/ready503/maintenance admission503 and the new private `native-observations` empty report passed. Stored maintenance was cleared through the private socket; health/readiness/metadata200, missing/invalid bearer401, wrong Origin403 and unchanged probe health passed at **21:15:19 UTC (4:15 PM Chicago)**. The effective external maintenance flag remains false and DATABASE_URL retains the limited app role. Each operator action revoked its temporary workspace SSH registration and exhaustively confirmed no workspace keys remained. Remote command files were removed by traps. A fresh native account A call is requested to collect the first live private record; native denial remains pending.
 
 ### Private initialization and enrollment
 
@@ -118,7 +126,7 @@ Stored maintenance was cleared through that same socket only after schema, role,
 
 ### Hosted HTTPS checks
 
-- `/health`: 200 throughout maintenance and after release.
+- `/health`: 200 on the running instances during maintenance and after reopening. The endpoint was unavailable during the explicit stop/failed first build.
 - `/ready`: 503 under maintenance, 200 after the private release command.
 - `/.well-known/oauth-protected-resource/mcp`: 200, exact resource URI, canonical Auth0 issuer, `identity:read`, bearer header method. The resource-specific `/mcp` suffix is required.
 - POST `/mcp`: 503 while maintenance was active; after release, missing and deliberately invalid bearers both returned 401 with the exact `resource_metadata` challenge URL.
@@ -151,7 +159,7 @@ The identity job at `82b9cc7` hung after its first application lifecycle test an
 ## Outstanding acceptance gates
 
 1. Complete a hosted restore/recovery drill, ongoing backup/retention approach and workload cost controls. The identity release, roles/schema, readiness and approved one-time encrypted export checks above passed.
-2. Verify the configured native OAuth registration/resource behavior with two real verified accounts, signed token claims, refresh/reuse/logout/reconnect and immediate local revocation.
+2. Two-account native identity, provider-correlated refresh, scoped post-expiry refresh revocation and reconnect passed. Complete immediate local same-token denial, refresh-token reuse/provider-only logout semantics and remaining hosted negative cases; collect only sanitized evidence.
 3. Simultaneous native cloud sessions for the same user, including copied-token/handle attacks. Until an integrity-protected work-session mechanism is established, full milestone acceptance and desktop authority stay blocked.
 4. Production mail provider or a reviewed onboarding change before class rollout; built-in development delivery is not production readiness.
 Local integration, coverage, rebuilt container verification and independent implementation review are complete. These results do not satisfy the outstanding hosted/native gates above.

@@ -42,7 +42,7 @@ Examples of command bodies (illustrative values, not working resources):
 
 close-course records the first closure timestamp, disables the course/teams, removes current memberships, revokes pending invitations/pairings and active leases, and makes unfinished writes uncertain. Team transports are invalidated before acknowledgement. Repeating the command preserves the original closure date. Do not use direct serving SQL as a substitute for this command. SQL shown below is restricted to offline, isolated target provisioning/validation by a trusted operator.
 
-### Private native request observations (approved extension, deployment pending)
+### Private native request observations (deployed identity-only extension)
 
 The operator approved bounded short-lived observations to complete native evidence checks without copying credentials. Observations belong to one serving process, are cleared on close, and never establish a cloud work-session credential or desktop authority. Only cryptographically verified requests enter the buffer; invalid or missing bearers cannot manufacture trusted observations.
 
@@ -162,3 +162,7 @@ Application retention does not erase historical copies in encrypted dumps, platf
 ### Railway deployment prober
 
 Railway sends deployment health checks with `Host: healthcheck.railway.app`. The identity server accepts that exact host only for a plain `GET /health` without Origin or forwarded-host/protocol headers. It does not admit that host for `/ready`, discovery, MCP, or any other method. The configured public resource host and normal origin/proxy checks remain required for protected traffic. The local HTTP regression exercises this exact prober request under maintenance and verifies that all other routes remain denied. See [Railway health-check hostname](https://docs.railway.com/deployments/healthchecks#healthcheck-hostname).
+
+### Observed staged-source build hazard
+
+On October18 the first staged-source builds selected the root probe Dockerfile even though the service manifest and effective RAILWAY_DOCKERFILE_PATH named Dockerfile.identity. Do not trust saved config alone: inspect build logs for compiled identity app/package/script copies and confirm the private command exists. Keep maintenance enabled; verify ownership is absent after failure. The tested recovery is an explicit source rebuild with deploymentRedeploy(usePreviousImageTag:false), preserving the same CI-verified pinned SHA and override. Reusing the failed image does not repair it. Release04eb389d-3542-47a2-9932-21c1806f3147 passed this recovery at a42f920.

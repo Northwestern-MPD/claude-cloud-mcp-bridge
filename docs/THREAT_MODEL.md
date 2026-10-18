@@ -1,13 +1,35 @@
 # Threat model and limits
 
-Automated coverage checks authorization independently of model text: user and device credentials differ, team membership is provisioned, device ownership must match local approval, and every MCP request verifies auth and binds the SDK session to its principal. Same-team access is not sufficient to approve another owner's device. Unknown tool fields are rejected.
+The hosted milestone 2 MCP service provides identity only and returns `desktop_access:false`. The separate public probe exposes harmless ping. The local mock gateway/fake Blender adapter remain development fixtures. See [ARCHITECTURE.md](ARCHITECTURE.md) and [IDENTITY_VERIFICATION.md](IDENTITY_VERIFICATION.md).
 
-Mock bearers are random 256-bit secrets, hashed in the gateway and never printed by the demo. They expire after an hour. Device credentials last only for the in-memory run and can be revoked. This is a development fixture, not OAuth/OIDC. Local-only transport and origin/Host checks keep fixture auth out of public deployment. They do not protect against another malicious process with the same local account; OS process isolation remains necessary.
+## Identity and authority
 
-A request may already be executing when a device disconnects or a lease expires. Cancellation cannot roll back a Blender operation. Mutations interrupted or timed out return `EXECUTION_UNCERTAIN`; no retry occurs. A per-device gateway write lock and connector busy guard reject overlapping work. A real adapter must add process supervision and cancellation where possible.
+Invited verified-email sign-in authenticates through Auth0; stable issuer/subject binds explicit course/team authorization. Names, model instructions, email similarity, shared cloud configuration and team membership alone never grant another owner's device control. Each resource validates signature, issuer, audience/resource, scope, client, expiry and issuance cutoff. Reusing authentication requires each server's own authorization policy. Unknown tool fields are rejected.
 
-The execute capability implies arbitrary local code execution in a future real Blender adapter, not a sandbox. It is denied unless locally granted; the connector requires a separate approval displaying JSON-escaped exact code for every invocation. The fake adapter never executes Python. Structured scene output remains untrusted data to the model.
+Private PostgreSQL stores durable identities, memberships, devices, fingerprints, contexts, pairings, leases, denials and metadata-only audit events. Limited serving privileges are separate from migration/backup authority. Schema/store/role validation and the dedicated owner lock fail closed; owner/database loss ends admission. Restart invalidates old runtime authority and makes interrupted writes uncertain. Deployment requires maintenance, drain, stop and confirmed lock release; one replica alone does not ensure safe handoff.
 
-Transport bounds: 64 MCP sessions total, 8 per user, 8 registered mock devices per user, 120 authenticated HTTP requests/minute per user, 64 KiB MCP bodies, 2 MiB WSS frames/results, 16,000-character code inputs, 30-second RPC deadline, heartbeat every ten seconds, fixed seven-tool catalogue. The unauthenticated ping probe accepts 16 KiB bodies; apply public rate/concurrency limits at a reverse proxy if exposed.
+Two-account native identity, refresh, scoped refresh revocation after access-token expiry, reconnect and concurrent same-account identity usability passed on operator-reported evidence supported by provider events. Grant deletion can leave issued JWTs valid. Concurrent identity success does not establish separate chat bearers/transports/work-session authority. Copied-token/handle attacks and immediate identical-JWT denial remain unproven; `SESSION_ISOLATION_UNPROVEN` keeps desktop tools disabled.
 
-Do not expose the mock gateway through a tunnel or reverse proxy. Public deployment requires OIDC issuer/audience/scope validation, TLS/WSS, OAuth metadata/PKCE flow, persistent memberships/devices, credential rotation, OS keychain and stronger abuse controls. The production entrypoint fails closed rather than accepting fixture identity. There is no claim that a cryptographically distinguishable Claude session is available.
+## Private operator boundary
+
+Administration uses a private `0600` Unix socket in a `0700` directory through approved authenticated operator access, with no public admin/diagnostic MCP endpoint. It trusts the operator/host account and does not isolate hostile processes with equivalent privileges. Temporary workspace SSH registrations and remote command files require cleanup.
+
+The deployed observation update, verified locally and in Linux CI, records requests reaching the verified authentication boundary. Its process-local ring holds at most 64 records for at most five minutes, pruned at token expiry. Reports expose only the last eight records, random references, outcomes, relative age/expiry and opaque token/principal/context correlations keyed for that boot. No raw access/refresh token is retained. Restart clears records and changes correlations. This is bounded experiment evidence, not durable audit or proof of independent chats.
+
+Live-reference denial privately resolves fingerprint/resource/original expiry and uses the existing revocation fence/durable denial path with its existing 60-second grace. It neither disables the account nor creates account-wide/resource blocks. Expired/evicted/previous-boot references are unavailable. Hosted/native experiments are still required after deployment; do not extract client-held credentials to fill the evidence gap.
+
+## Desktop and mock execution risks
+
+The mock independently verifies user/device credentials, binds each MCP transport to its principal and requires owner consent for pairing/capabilities. Fixture bearers are random 256-bit secrets stored as hashes, expire after an hour and are never printed by the demo. Device credentials/state last only for the in-memory run. Loopback and Host/Origin restrictions do not isolate malicious processes sharing the local account. Never expose the mock through a tunnel/reverse proxy.
+
+Disconnect, expiry or admission closure may happen after execution starts. Cancellation cannot roll back Blender mutations. Interrupted/timed-out writes return `EXECUTION_UNCERTAIN`; no automatic mutation retry or queued replay occurs. Write ownership and connector busy guards reject overlap. A real adapter still needs supervision/cancellation where possible.
+
+An eventual execute capability implies arbitrary laptop code execution, with no sandbox. It requires locally granted capability and separate approval displaying JSON-escaped exact code per invocation. The fake adapter executes no Python; structured scene output is untrusted model input. Production WSS, enrollment/keychain and real Blender integration remain unfinished.
+
+Mock bounds: 64 MCP sessions total, eight per user, eight registered devices per user, 120 authenticated requests/minute per user, 64 KiB MCP bodies, 2 MiB WebSocket frames/results, 16,000-character code, 30-second RPC deadlines and ten-second heartbeats. These development bounds do not prove deployed laptop transport. The probe accepts 16 KiB bodies; public abuse controls remain an operational concern.
+
+## Recovery and operations
+
+A verified encrypted local export/catalogue does not establish hosted restore performance, scheduled/offsite protection or PITR. Railway DAILY backup configuration was rejected as Pro-only. Recovery requires a new external issuance cutoff, isolated target validation, suspension and reviewed roster/revocation reconciliation. Snapshots cannot prove current revocation completeness; missing evidence keeps admissions closed.
+
+External production SMTP is unavailable; built-in mail remains development-only. CPU/memory limits are not a workspace spending cap. Cost review, production abuse controls, distribution and physical Mac/Windows Blender acceptance remain prerequisites. Identity/probe success grants no desktop authority.
