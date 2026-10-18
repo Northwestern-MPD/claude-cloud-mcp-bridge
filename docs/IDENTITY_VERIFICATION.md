@@ -1,6 +1,6 @@
 # Milestone 2 verification record
 
-Status: **local implementation and identity-only hosted release verified; full milestone acceptance blocked**. Native gate: `IDENTITY_NATIVE_BLOCKED` pending completed cloud OAuth, authenticated native identity and session/refresh checks. Local evidence does not establish native Claude OAuth or separation between simultaneous cloud sessions. Public desktop tools remain disabled.
+Status: **local implementation and identity-only hosted release verified; full milestone acceptance blocked**. Native gate remains `IDENTITY_NATIVE_BLOCKED` pending second-account, refresh/revocation and session checks. The first account completed hosted sign-in and an operator-reported native identity call. Local evidence does not establish native Claude OAuth or separation between simultaneous cloud sessions. Public desktop tools remain disabled.
 
 ## Auth0 development evidence
 
@@ -12,7 +12,7 @@ Status: **local implementation and identity-only hosted release verified; full m
 - Passwordless connection `con_0NIEg0VbB8exZW1K` (`email`) has signups disabled and is enabled only for that development client. OTP length six; expiry 180 seconds.
 - The operator explicitly authorized test accounts A and B. Exact addresses/subjects are protected operator records, not repository evidence. Deliberate profile creation left `email_verified:false`; no local membership was granted.
 - Each `/passwordless/start` request returned HTTP 200; the tenant recorded two `cls` events. The operator confirmed delivery to **both** inboxes. No code or link was requested in chat.
-- This establishes development delivery only. A completed hosted sign-in, issued access-token claim verification, refresh and native MCP invocation are pending.
+- The isolated development preflight establishes delivery only. Later hosted Claude sign-in and the first native result are recorded below; raw signed-token inspection, refresh and the remaining native checks are pending.
 - Auth0's built-in sender is for testing. No external SMTP provider is configured; production email readiness and automatic account creation remain blocked as documented in [AUTH0_SETUP.md](AUTH0_SETUP.md).
 
 ### Hosted OAuth configuration — October 18
@@ -29,7 +29,23 @@ The operator reported Claude authorization failure reference `ofid_a445136ad6b9b
 
 Email was the only enabled connection, but New Universal Login had `identifier_first` unset. Auth0 documents this profile combination as unsupported for passwordless email. A fresh diagnostic request using the observed OAuth parameters reproduced the callback error before mutation. The operator changed only `prompts.identifier_first` to true and re-fetched the setting. The same request then returned 200 at `/u/login/identifier` with an email input and without the prior connection error. No real email, code or token was submitted by this diagnostic check. Raw provider events, temporary state/verifier and HTML remain in protected operator records. [Auth0 documented cause and requirement](https://support.auth0.com/center/s/article/no-connections-enabled-for-the-client).
 
-The operator has been asked to retry the existing connector, complete email verification and report an actual native `class_identity` result. Full hosted OAuth/native acceptance remains pending; the login-form check does not establish token claims, refresh or native discovery.
+The retry subsequently succeeded. The operator confirmed completing the email-code connector sign-in, and Auth0 recorded successful login plus code exchange. The first native tool result is recorded next. Full hosted OAuth/native acceptance still requires the remaining account, refresh and session checks.
+
+### First native identity result — account A
+
+After the prompt fix, Auth0 recorded a successful email login at 19:42:11 UTC and successful Authorization Code exchange at 19:42:12 UTC. The provider subject matched the preapproved account A invitation; no account linking, email-based subject transfer or manual verification was performed. The operator then reported that `class_identity` worked through the requested native tool interface. Its exact resource matched the deployed `/mcp` URL, it returned one expected pilot course and the account A team, and `desktop_access` was false.
+
+The full reported result, including the internal user UUID, is retained only in protected `native-account-a-result.json`. Repository evidence omits personal identifiers. This is operator-reported native evidence, supported by provider login/exchange records and matching invitation configuration; it is not a parent shell/SDK call. The deployed verifier was exercised by the successful request; no access/refresh token or authorization code was requested from the user or copied into this record. The exact client version, native server identifier and cloud-session commit were not supplied. Serving commit remains 355ba95.
+
+A private-window reconnect using the other explicitly authorized test email and a fresh native call has been requested. That result, supported refresh/revocation tests and same-user simultaneous-session isolation remain pending. One successful identity call does not enable desktop authority or complete the milestone.
+
+### Reported hosted-login UX and latency
+
+The operator reported roughly 20 seconds waiting after submitting the email code/authorization, with no visible progress and repeated button clicks allowed. The precise browser request/click timing has not been captured, so the delay's cause remains unproven.
+
+Available provider timing: the whole login transaction was 29.005 seconds, including email retrieval and user input; its login prompt spanned 26.417 seconds and consent prompt 1.991 seconds. These spans are not server-processing measurements. The fixed verified-email Action reported **4 ms**. Code exchange was recorded about 0.9 seconds after login completion. Railway's observed post-login MCP HTTP requests reported 75–445 ms, with some 400 responses followed by successful initialization/discovery; request bodies were not retained, so those 400 causes are not classified here. This evidence does not isolate the user's reported waiting interval.
+
+The screen is Auth0-hosted Universal Login. Basic text/themes are supported; a supported custom loading/duplicate-submit interaction can be implemented through ACUL, which requires a custom domain and hosted frontend assets. The tenant currently has no custom domain. No page behavior or branding was changed during this diagnosis. Proposed behavior for a later scoped UI change: immediately show “Verifying…”, disable repeated clicks/Enter submissions while pending, announce progress accessibly, and restore a clear retry after an error/timeout. [Auth0 basic theming](https://auth0.com/docs/customize/login-pages/universal-login/customize-themes), [ACUL capabilities and requirements](https://auth0.com/docs/customize/login-pages/advanced-customizations).
 
 ## Local implementation evidence
 
@@ -78,7 +94,7 @@ Stored maintenance was cleared through that same socket only after schema, role,
 - POST `/mcp`: 503 while maintenance was active; after release, missing and deliberately invalid bearers both returned 401 with the exact `resource_metadata` challenge URL.
 - Unapproved Origin returned 403. The existing compatibility probe still returned 200 and its fixed no-desktop result.
 
-These are direct HTTPS/operator checks, **not authenticated/native MCP evidence**. No minted JWT, native `class_identity`, refresh or same-user session result has been observed yet.
+These are direct HTTPS/operator checks, **not authenticated/native MCP evidence**. The later account A operator-reported native result is recorded above. Direct token-claim capture, refresh and same-user session results remain pending.
 
 ### Temporary access cleanup
 
