@@ -2,28 +2,28 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build reusable Auth0 authentication for class MCP servers and durable SQLite authorization, with real-client verification before any desktop authority is enabled.
+**Goal:** Build reusable Auth0 authentication for class MCP servers and durable PostgreSQL authorization, with real-client verification before any desktop authority is enabled.
 
-**Architecture:** A storage-independent authentication package verifies provider tokens and serves MCP discovery. A separate identity-only service uses SQLite enrollment and current revocation policy; local adapters exercise persistent device/lease behavior. Native OAuth is checked early; unresolved same-user cloud context isolation blocks full milestone acceptance and all public desktop capabilities.
+**Architecture:** A storage-independent authentication package verifies provider tokens and serves MCP discovery. A separate identity-only service uses Postgres enrollment and current revocation policy; local adapters exercise persistent device/lease behavior. Native OAuth is checked early; unresolved same-user cloud context isolation blocks full milestone acceptance and all public desktop capabilities.
 
-**Tech Stack:** Node 22+, TypeScript/NodeNext, existing MCP SDK 1.32.1, jose, better-sqlite3, Auth0 hosted email OTP, Railway Docker/volume, Node test runner with tsx.
+**Tech Stack:** Node 22+, TypeScript/NodeNext, existing MCP SDK 1.32.1, jose, pg, Auth0 hosted email OTP, Railway Docker/private Postgres, Node test runner with tsx.
 
 **Spec:** [Approved milestone 2 design](../specs/2026-10-17-milestone-2-identity-authorization-design.md).
 
-**Status:** Design approved October 17, 2026. This plan is for review; no implementation task or provider provisioning has been performed.
+**Status:** Design approved October 17, 2026; storage changed to Railway Postgres by the operator the same day. This plan is for review; no implementation task or provider provisioning has been performed.
 
 ## Global Constraints
 
 - Work from main, preserve local changes, and use direct commits/pushes; no PR requirement. Use a worktree only if isolation is needed at execution time.
-- Auth0 plus SQLite are approved. Invited, verified email is sufficient; Northwestern NetID SSO is not required.
+- Auth0 plus Railway Postgres are approved. Invited, verified email is sufficient; Northwestern NetID SSO is not required.
 - Keep the existing public ping probe separate and harmless. No public mock gateway, desktop tools, agent/WSS endpoint, shared roster API, Redis or cluster in this milestone.
 - Shared identity is `(issuer, subject)`. Every MCP server has its own exact audience, allowed clients and scopes. The reusable package imports no Blender, connector or storage implementation.
 - Require boolean true in the signed claim `https://github.com/Northwestern-MPD/claims/email_verified`, populated from trusted Auth0 verification state.
 - RS256 only; exact issuer/audience; signed azp allowlist; client_id must agree when present; scopes come from signed scope. API access-token lifetime 600 seconds; clock tolerance 60 seconds.
 - Cache trusted JWKS for at most one hour, refresh after ten minutes and rate-limit unknown-key refresh attempts. Never fetch token-provided issuer/jku/x5u URLs.
 - Invitation lifetime seven days; pairing code randomness at least 128 bits; device credential randomness at least 256 bits.
-- Database path `/data/authorization.sqlite`; foreign keys on every connection, WAL, synchronous=FULL, bounded busy timeout and restrictive permissions.
-- One authorization-service instance/replica and one volume. Missing production DB fails closed; initialization requires an explicit operator action.
+- One private Postgres database/schema with pg (no pg-native/ORM). Separate owner, migration, limited application and read-only backup roles; only the app role reaches normal serving configuration. Parameterized SQL and versioned/checksummed migrations.
+- One identity app replica with no data volume; one private Railway Postgres service owns its volume. Missing database/schema/store marker fails closed; initialization/migration is an explicit privileged operator job.
 - Restart invalidates contexts/pairings/leases, marks devices offline and advances epochs; enrollment/revocations survive. Never replay mutations.
 - Check current local disable/revocation before dispatch. Auth0 logout/refresh revocation alone does not revoke an existing access JWT.
 - Audit retention 30 days; roster PII removal course close plus 30 days. No bearer/refresh/device secret, OTP, raw claims, code, scene or image payload in logs/audit.
@@ -38,7 +38,7 @@
 2. Provider creation succeeds but local enrollment fails: retry reconciles the exact subject without duplicate membership or duplicate invitation mail (Tasks 4 and 6).
 3. Chunked/oversized/ambiguous requests and copied MCP handles: continued sessions receive the same bounds and authentication as initialization (Task 5).
 4. Restoring old authorization data while newer tokens/credentials exist: maintenance, epoch change and roster reconciliation prevent authority resurrection (Tasks 3 and 11).
-5. Fresh Node 22 installs, native-module architecture and empty/root-owned volumes: controlled build, non-root serving process and explicit initialization work together (Task 7).
+5. Pool exhaustion, database restart and leaked transaction clients: bounded pg connections, release/rollback and loss of runtime ownership must close admission and dispatch (Tasks 3, 5 and 7).
 
 ## Execution map
 
@@ -49,16 +49,17 @@ Tasks 1–8 deliver an identity-only release and its native OAuth check. Tasks 9
 | Files | Responsibility |
 |---|---|
 | `packages/auth/{types,errors,verifier,jwks,metadata,index}.ts` | Reusable token verification, trusted keys and OAuth discovery |
-| `packages/storage/{types,database,migrations,enrollment,contexts,devices,grants,operations,revocations,recovery,backup,retention}.ts` | Versioned SQL schema, lifecycle and transactional repositories |
+| `packages/storage/{types,database,migrations,enrollment,contexts,devices,grants,operations,revocations,recovery,retention}.ts` | Versioned Postgres schema, lifecycle, bounded pool and transactional repositories |
 | `packages/authorization/{identity,policy,runtime,session-binding}.ts` | Enrollment decisions, local policy/dispatch, invalidation and rejecting default binding resolver |
 | `packages/credentials/keychain.ts` | CredentialStore interface, test injection and fail-closed unavailable implementation |
 | `apps/identity/{config,server,main}.ts` | New HTTP MCP identity-only application |
 | `apps/operator/{types,socket,commands,main,provision,mail}.ts` | Private admin socket/CLI, provider reconciliation and invitation sender |
 | `auth0/actions/verified-email.js` | Auth0 Action issuing the fixed verification claim |
-| `test/support/{auth,storage,operator}.ts` | Local signing keys/clocks, temporary databases, provider/mail fakes |
-| `test/{auth-verifier,auth-discovery,storage,enrollment,identity-http,operator,durable-policy,durable-dispatch,recovery,session-binding}.test.ts` | Focused behavioral suites compatible with existing root test glob |
+| `test/support/{auth,storage,operator,postgres-tools}.ts` | Local signing keys/clocks, disposable Postgres databases, provider/mail fakes |
+| `test/{auth-verifier,auth-discovery,session-binding}.test.ts and test/database/{storage,enrollment,identity-http,operator,durable-policy,durable-dispatch,recovery}.test.ts` | Unit suites under the existing root glob; database integration suites run explicitly |
+| `scripts/{migrate-identity,validate-identity-store}.ts` | Explicit operator migration and restore-validation entrypoints |
 | `test/container/identity.test.ts` | Explicit container-only suite, excluded from the default root test glob |
-| `Dockerfile.identity`, `scripts/identity-entrypoint.sh`, `railway.identity.json` | Separate deployment image, volume ownership/bootstrap and service config |
+| `Dockerfile.identity`, `railway.identity.json`, `compose.identity-test.yml` | Non-root app image, private database test service and independent app deployment config |
 | `examples/identity.env.example`, `examples/identity.mcp.json` | Nonsecret examples, clearly labeled as examples |
 | `docs/{AUTH0_SETUP,IDENTITY_OPERATIONS,IDENTITY_VERIFICATION}.md` | Provider setup, operational procedures and evidence |
 | Existing package/lock files, CI workflow, SessionStart hook, .gitignore and handoff | Dependency/build integration, private-artifact exclusions and continuation state |
@@ -72,10 +73,11 @@ Types live in the owning task's types.ts. Times are Unix milliseconds except raw
 - `PrincipalKey = Readonly<{issuer: string; subject: string}>`.
 - `VerifiedPrincipal = PrincipalKey & Readonly<{clientId: string; scopes: readonly string[]; issuedAt: number; expiresAt: number; emailVerified: true}>`; no raw token/claim bag.
 - `AuthConfig = Readonly<{issuer: string; jwksUri: string; resource: string; allowedClientIds: readonly string[]; requiredScopes: readonly string[]}>`.
-- `Store = {db: BetterSqlite3.Database; bootId: string; deploymentEpoch: string; close(): void}`; raw handle is private to repositories/storage tests. Import the BetterSqlite3 type from better-sqlite3.
+- `Store = {bootId: string; deploymentEpoch: string; transaction<T>(fn: (tx: Transaction) => Promise<T>): Promise<T>; close(): Promise<void>}`. Transaction wraps one checked-out pg.PoolClient with query methods; no raw pool is exposed to repositories. Every transaction releases its client in finally. Readiness/owner-client state is tracked privately.
 - `IdentityView = Readonly<{userId: string; resource: string; courseIds: readonly string[]; teamIds: readonly string[]; desktop_access: false}>`.
 - `ContextRef = Readonly<{id: string; userId: string; resource: string; clientId: string; bootId: string; deploymentEpoch: string}>`.
 - `RuntimeInvalidator = {invalidate(input: {userId?: string; deviceId?: string; contextId?: string; teamId?: string}): void}`; synchronously removes runtime authority and rejects/notifies matching local pending work.
+- All repository I/O returns Promises. Deadline-sensitive methods receive a clock callback and read it after locks and immediately before dispatch; do not authorize from a stale pre-await timestamp.
 - `PolicyError` exposes a stable string code. HTTP errors never include provider/SQL/stack/credential details.
 
 ---
@@ -113,45 +115,44 @@ Types live in the owning task's types.ts. Times are Unix milliseconds except raw
 - [ ] Run auth-verifier/auth-discovery suites plus typecheck; expect audience/scope isolation and outage/rotation tests pass. Inspect imports to verify no storage/Blender dependencies.
 - [ ] Commit as `feat: add bounded JWKS and reusable MCP auth discovery`.
 
-### Task 3: SQLite schema and fail-closed startup
+### Task 3: Postgres roles, migrations, pool and fail-closed startup
 
-**Files:** Create packages/storage/types.ts, database.ts, migrations.ts, recovery.ts; test/support/storage.ts; test/storage.test.ts. Modify dependencies/lockfile and private artifact exclusions.
+**Files:** Create packages/storage/{types,database,migrations,recovery}.ts, scripts/migrate-identity.ts, test/support/storage.ts, test/database/storage.test.ts, compose.identity-test.yml; update package/lock files. Include scripts/**/*.ts in TypeScript build when adding the migration CLI.
 
-**Interfaces:** Produce `openAuthorizationStore(options: {path: string; initialize: boolean; maintenance: boolean; deploymentEpoch: string; now(): number}): Store`. Define all spec tables/columns/states, including operation_attempts, token denials and deployment epochs. Temporary DB fixtures use real files and close/remove them in finally blocks.
+**Interfaces:** Produce `migrateAuthorizationStore(options: {migrationUrl: string; transportMode: 'railway-private'|'verify-full'|'local-test'; ca?: string; initialize: boolean; maintenance: boolean; expectedStoreId: string; deploymentEpoch: string}): Promise<void>` and `openAuthorizationStore(options: {connectionString: string; transportMode: 'railway-private'|'verify-full'|'local-test'; ca?: string; expectedStoreId: string; maintenance: boolean; deploymentEpoch: string; now(): number}): Promise<Store>`. Transaction uses a single PoolClient for BEGIN/COMMIT/ROLLBACK. The test fixture creates/disposes isolated databases on an explicitly disposable Postgres instance, never the hosted store.
 
-- [ ] Test missing DB refusal, explicit initialization, initialized-store refusal when initialize=true, migration rollback/failure, newer unsupported schema, FKs/unique indexes, reopen durability and permissions. Seed active contexts/leases/pairings/devices/unfinished operations and assert reopening invalidates authority but preserves enrollment/revocations:
+- [ ] Write real Postgres tests for missing database/schema/marker refusal, explicit initialization, concurrent migration serialization/checksums/rollback, unsupported newer schema, store-ID mismatch, FK/partial-unique constraints and runtime-role DDL denial. Test two clients really contend on locks. A second runtime owner must refuse readiness without revoking the first owner's grants. Restart recovery preserves enrollment/revocation but kills live contexts/leases. Use async assertions:
   ```ts
-  assert.throws(() => openAuthorizationStore({
-    path: missingPath, initialize: false, maintenance: false,
-    deploymentEpoch: 'epoch-1', now: () => 1_800_000_000_000,
-  }), /STORE_NOT_INITIALIZED/);
+  await assert.rejects(openAuthorizationStore(uninitializedOptions), /STORE_NOT_INITIALIZED/);
+  await assert.rejects(runtimeRole.query('CREATE TABLE mpd_identity.forbidden(id int)'), /permission denied/);
   ```
-- [ ] Check/pin stable Node-22-compatible better-sqlite3 and its type declarations. Retain `npm ci --ignore-scripts`, then explicitly `npm rebuild better-sqlite3`. Run `node --import tsx --test test/storage.test.ts`; establish red after confirming the native module loads.
-- [ ] Implement parameterized migrations, foreign_keys=ON, WAL, synchronous=FULL and busy_timeout=5000 per connection. Initialization requires initialize=true AND maintenance=true; store an initialization/schema marker. Before returning, atomically create a new boot ID, invalidate contexts/pairings/leases, advance device epochs/offline state and mark unfinished mutation intents uncertain. On deployment-epoch mismatch additionally suspend users/memberships and invalidate credentials; maintenance is required.
-- [ ] Run storage suite, reopen databases and check PRAGMA integrity_check/foreign_key_check. Expect enrollment preserved and old live authority invalid. Normal startup never initializes a missing DB or silently downgrades a schema.
-- [ ] Commit as `feat: add durable SQLite authority store and safe startup`.
+- [ ] Resolve/pin Node-22-compatible pg/@types/pg, with no pg-native or native rebuild. Start a disposable Postgres test service matching the selected Railway major; require explicit PG_TEST_DISPOSABLE=true and PG_TEST_ADMIN_URL/PG_TEST_DATABASE_URL. Fixtures validate the disposable marker and refuse production URLs. Run `node --import tsx --test test/database/storage.test.ts`; establish red after actual connectivity works.
+- [ ] Implement roles mpd_identity_owner (NOLOGIN), mpd_identity_migrator (owner-capable DDL), mpd_identity_app (DML only) and mpd_identity_backup (schema-scoped read only). Revoke unnecessary PUBLIC privileges. Initialize/migrate only via explicit operator CLI under maintenance and schema advisory lock; runtime never receives migration credentials or creates schemas. Implement pool max=5, connect=5s, idle=30s, statement=5s, lock=2s and idle-in-transaction=10s timeouts. A separate dedicated client holds the runtime-owner advisory lock; losing it ends the app lifetime and disables dispatch. Roll back/release clients on every error.
+- [ ] Before readiness, validate schema/store ID, acquire ownership and atomically create a boot ID, revoke old contexts/pairings/leases, advance device epochs/offline state and mark unfinished mutation intents uncertain. Epoch mismatch additionally suspends restored users/memberships and invalidates device credentials under maintenance. Verify per-transaction backend PID consistency, rollback/release, pool timeout and network/owner-client failure with no fallback. Run the storage suite and typecheck.
+- [ ] Commit as `feat: add private Postgres authority store and safe startup`.
+
 
 ### Task 4: Subject-bound invitations and current authorization
 
-**Files:** Create packages/storage/enrollment.ts, packages/authorization/identity.ts, test/enrollment.test.ts; extend storage types/fixtures.
+**Files:** Create packages/storage/enrollment.ts, packages/authorization/identity.ts, test/database/enrollment.test.ts; extend storage types/fixtures.
 
-**Interfaces:** Define `InvitationInput = {id: string; email: string; issuer: string; subject: string; courseId: string; teamId: string; role: 'student' | 'instructor'; expiresAt: number}`. Produce `enrollInvitation(store: Store, input: InvitationInput, now: number): void`, `activateEnrollment(store: Store, principal: VerifiedPrincipal, now: number): string` (user ID) and `authorizeIdentity(store: Store, principal: VerifiedPrincipal, input: {resource: string; tokenFingerprint: string; now: number}): IdentityView`.
+**Interfaces:** Define `InvitationInput = {id: string; email: string; issuer: string; subject: string; courseId: string; teamId: string; role: 'student' | 'instructor'; expiresAt: number}`. Produce `enrollInvitation(store: Store, input: InvitationInput, clock: () => number): Promise<void>`, `activateEnrollment(store: Store, principal: VerifiedPrincipal, clock: () => number): Promise<string>` (user ID) and `authorizeIdentity(store: Store, principal: VerifiedPrincipal, input: {resource: string; tokenFingerprint: string; clock: () => number}): Promise<IdentityView>`.
 
 - [ ] Test seven-day invitation bounds, subject-only activation, unverified/uninvited/disabled/expired/revoked denial, plus-address/domain distinctions, membership rollback and token/resource blocks. Distinguish normal repeat login from invitation replay: accepted enrollment is idempotent, but it cannot recreate a revoked membership. Seed subject A's invitation and assert subject B cannot inherit it despite identical email display information:
   ```ts
-  assert.throws(() => authorizeIdentity(store, principalB, request), /NOT_ENROLLED/);
-  assert.equal(activeMembershipCount(store, principalB), 0);
+  await assert.rejects(authorizeIdentity(store, principalB, request), /NOT_ENROLLED/);
+  assert.equal(await activeMembershipCount(store, principalB), 0);
   ```
-- [ ] Run `node --import tsx --test test/enrollment.test.ts`; expect missing repository/authorization behavior.
+- [ ] Run `node --import tsx --test test/database/enrollment.test.ts`; expect missing repository/authorization behavior.
 - [ ] Implement transactional invitation consumption/membership activation. Trim surrounding whitespace and lowercase only email domains; do not merge local parts/dots/plus tags. Bind issuer/subject explicitly, require verified-email evidence and current local permissions, never email claims/domain inference. No positive authorization cache; return only IdentityView.
 - [ ] Run enrollment/storage/auth suites. Inject a failure between consumption and membership creation; assert rollback and no duplicate enrollment on retry.
 - [ ] Commit as `feat: enforce durable invited student enrollment`.
 
 ### Task 5: Identity-only MCP server and per-request checks
 
-**Files:** Create apps/identity/config.ts, server.ts, main.ts; packages/storage/contexts.ts; packages/authorization/runtime.ts; test/identity-http.test.ts.
+**Files:** Create apps/identity/config.ts, server.ts, main.ts; packages/storage/contexts.ts; packages/authorization/runtime.ts; test/database/identity-http.test.ts.
 
-**Interfaces:** Produce `readIdentityConfig(env: NodeJS.ProcessEnv): IdentityConfig`, `createIdentityRuntime(store: Store): IdentityRuntime` (implements RuntimeInvalidator), and `startIdentityServer(options: {config: IdentityConfig; store: Store; verify(token: string): Promise<VerifiedPrincipal>; runtime: IdentityRuntime}): Promise<{url: string; close(): Promise<void>}>`. IdentityConfig contains auth:AuthConfig, database:{path, initialize, maintenance, deploymentEpoch}, explicit externalOrigin, host, port, maintenance and adminSocketPath; its startup validation rejects contradictory maintenance/bootstrap flags. Persist `recordTransportContext(store: Store, principal: VerifiedPrincipal, resource: string, now: number): ContextRef`; principal/client/resource/boot ownership is immutable across continued requests.
+**Interfaces:** Produce `readIdentityConfig(env: NodeJS.ProcessEnv): IdentityConfig`, `createIdentityRuntime(store: Store): IdentityRuntime` (implements RuntimeInvalidator), and `startIdentityServer(options: {config: IdentityConfig; store: Store; verify(token: string): Promise<VerifiedPrincipal>; runtime: IdentityRuntime}): Promise<{url: string; close(): Promise<void>}>`. IdentityConfig contains auth:AuthConfig, database:{connectionString, transportMode, ca?, expectedStoreId, maintenance, deploymentEpoch}, explicit externalOrigin, host, port, maintenance and adminSocketPath. App config has no schema-initialization flag or migration/backup URL; reject credentials pointing at a different store or an unapproved public database endpoint. Persist `recordTransportContext(store: Store, principal: VerifiedPrincipal, resource: string, clock: () => number): Promise<ContextRef>`; principal/client/resource/boot ownership is immutable across continued requests.
 
 - [ ] Write real SDK HTTP tests using local signed tokens: public metadata/health, 401 challenge, insufficient scope, uninvited 403, maintenance/store 503 and readiness. Reject copied handles with wrong principal/client, missing bearer on continued/DELETE requests, JSON over 65_536 bytes including chunked bodies, duplicate bearer, malformed JSON, disallowed Origin and spoofed forwarded Host. Assert:
   ```ts
@@ -159,34 +160,35 @@ Types live in the owning task's types.ts. Times are Unix milliseconds except raw
   const result = await client.callTool({ name: 'class_identity', arguments: {} });
   assert.equal(result.structuredContent?.desktop_access, false);
   ```
-- [ ] Run `node --import tsx --test test/identity-http.test.ts`; expect missing server/runtime behavior. Request local-port sandbox access if needed.
-- [ ] Implement with current SDK primitives, without importing the mock gateway. Auth precedes protected parsing/routing; recheck local authorization on every tool call. Implement exact session/rate/body bounds and headers=10 seconds/request=35 seconds. Origin/proxy trust comes from configuration. class_identity takes no arguments and returns only IdentityView; reject all desktop tool names. Maintenance never admits students; failed store/config startup opens no listener.
+- [ ] Run `node --import tsx --test test/database/identity-http.test.ts`; expect missing server/runtime behavior. Request local-port sandbox access if needed.
+- [ ] Implement with current SDK primitives, without importing the mock gateway. Auth precedes protected parsing/routing; recheck local authorization on every tool call. Implement exact session/rate/body bounds and headers=10 seconds/request=35 seconds. Origin/proxy trust comes from configuration. class_identity takes no arguments and returns only IdentityView; reject all desktop tool names. Maintenance never admits students; failed store/config startup opens no listener; a later DB/pool/owner-client loss closes admission and ends this serving lifetime. Test statement/connection timeouts and close transports without replay.
 - [ ] Run identity/auth/enrollment suites and typecheck. Capture a canary token/secret and assert no response/log leaks it. Verify no cookie grants authority and current probe catalogue remains ping-only.
 - [ ] Commit as `feat: expose authenticated class identity MCP service`.
 
 ### Task 6: Local admin, idempotent Auth0 provisioning and Action
 
-**Files:** Create apps/operator/{types,socket,commands,main,provision,mail}.ts; auth0/actions/verified-email.js; test/support/operator.ts; test/operator.test.ts; docs/AUTH0_SETUP.md. Add only required provider/SMTP dependencies, pinned after compatibility checks.
+**Files:** Create apps/operator/{types,socket,commands,main,provision,mail}.ts; auth0/actions/verified-email.js; test/support/operator.ts; test/database/operator.test.ts; docs/AUTH0_SETUP.md. Add only required provider/SMTP dependencies, pinned after compatibility checks.
 
-**Interfaces:** Define AdminCommand with literal kinds import-invites, disable-user, remove-membership, block-resource and deny-token; Task 10 adds revoke-device and Task 11 adds maintenance, reconcile-roster, backup and retention. AdminResult is {ok:true, affected:number}; errors use stable PolicyError codes. Accept user/team/resource IDs and validated fingerprints, not arbitrary SQL or provider URLs. Produce `executeAdmin(command: AdminCommand, deps: {store: Store; runtime: RuntimeInvalidator; now(): number}): AdminResult`, `startAdminSocket(path: string, execute: (command: AdminCommand) => Promise<AdminResult>): Promise<{close(): Promise<void>}>`, `runOperator(args: readonly string[], deps: OperatorDependencies): Promise<number>`, and `provisionRoster(rows: readonly RosterRow[], deps: {provider: Auth0Provisioner; local: EnrollmentAdmin; sender: InvitationSender; sendAuthorized: boolean}): Promise<ProvisionSummary>`. Define dependency types in operator/types.ts; their operations are create/reconcile exact email-connection subject, record invitation, and deliver invitation.
+**Interfaces:** Define AdminCommand with literal kinds import-invites, disable-user, remove-membership, block-resource and deny-token; Task 10 adds revoke-device and Task 11 adds maintenance, reconcile-roster and retention. Database export/restore remains an operator procedure outside the app admin socket. AdminResult is {ok:true, affected:number}; errors use stable PolicyError codes. Accept user/team/resource IDs and validated fingerprints, not arbitrary SQL or provider URLs. Produce `executeAdmin(command: AdminCommand, deps: {store: Store; runtime: RuntimeInvalidator; now(): number}): Promise<AdminResult>`, `startAdminSocket(path: string, execute: (command: AdminCommand) => Promise<AdminResult>): Promise<{close(): Promise<void>}>`, `runOperator(args: readonly string[], deps: OperatorDependencies): Promise<number>`, and `provisionRoster(rows: readonly RosterRow[], deps: {provider: Auth0Provisioner; local: EnrollmentAdmin; sender: InvitationSender; sendAuthorized: boolean}): Promise<ProvisionSummary>`. Define dependency types in operator/types.ts; their operations are create/reconcile exact email-connection subject, record invitation, and deliver invitation.
 
 - [ ] Test socket mode 0600, strict/bounded commands, durable mutation before acknowledgement and runtime invalidation. Fake-provider/SMTP tests reproduce remote success/local failure; retry must reconcile the same subject, create one membership and send no mail before persistence. sendAuthorized=false sends zero mail. Already confirmed mail is not resent; uncertain delivery is surfaced for operator reconciliation. Test the Action issues only the fixed boolean claim from event.user.email_verified, ignoring request/user_metadata.
-- [ ] Run `node --import tsx --test test/operator.test.ts`; expect missing admin/provisioning behavior.
+- [ ] Run `node --import tsx --test test/database/operator.test.ts`; expect missing admin/provisioning behavior.
 - [ ] Implement private socket commands and file/stdin CLI inputs. Keep roster, exact subject mapping and invitation delivery manifests under ignored work/identity-operator/ with restrictive permissions and no secrets. Use narrow Management API credentials only in the operator process, not the serving process. Use a maintained SMTP adapter; classify sent/failed/uncertain outcomes rather than promise exactly-once email. Hash a token from protected stdin before token-denial admin submission; never print it.
 - [ ] Document Auth0 setup: production SMTP/verified sender, disabled email signups, pre-provisioned identities, Action binding, RS256/default access-token profile, 600-second API lifetime, identity:read, resource compatibility, PKCE and approved native client registration. Include supported refresh rotation/reuse/expiry settings, narrow Management API scopes and local-first disable. Validate nonsecret examples with readIdentityConfig.
 - [ ] Run operator/enrollment/identity suites and typecheck; verify logs omit recipient lists/OTP/secrets. Commit as `feat: add operator enrollment and Auth0 setup contracts`.
 
-### Task 7: Node 22 image, volume bootstrap and CI
+### Task 7: Non-root Node image, real Postgres CI and service config
 
-**Files:** Create Dockerfile.identity, scripts/identity-entrypoint.sh, railway.identity.json, examples/identity.env.example, examples/identity.mcp.json, test/container/identity.test.ts. Modify npm scripts/lockfile, .github/workflows/check.yml, .claude/settings.json, .gitignore and applicable agent build instructions.
+**Files:** Create Dockerfile.identity, railway.identity.json, examples/identity.env.example, examples/identity.mcp.json, test/container/identity.test.ts; extend compose.identity-test.yml. Modify npm scripts/lockfile, .github/workflows/check.yml and private-artifact exclusions/build instructions. SessionStart remains npm ci --ignore-scripts; it does not start a database or rebuild a native module.
 
-**Interfaces:** Add scripts start:identity (`node dist/apps/identity/main.js`), operator (`node dist/apps/operator/main.js`), test:identity-container (`node --import tsx --test test/container/identity.test.ts`) and test:coverage. Container tests must not run under the default `test/*.test.ts` glob. AUTHZ_INITIALIZE_DATABASE=true is an explicit initialization input permitted only with AUTHZ_MAINTENANCE=true; remove it before normal admission. Default initialization is false.
+**Interfaces:** Add start:identity (`node dist/apps/identity/main.js`), operator (`node dist/apps/operator/main.js`), migrate:identity (`node dist/scripts/migrate-identity.js`), test:db (`node --import tsx --test test/database/*.test.ts`), test:all (`npm test && npm run test:db`), test:identity-container (`node --import tsx --test test/container/identity.test.ts`) and test:coverage. Default root npm test/probe discovery must require neither Postgres nor Docker; DB/container suites are explicit and must fail with a clear prerequisite error rather than silently skip.
 
-- [ ] Write smoke tests against a new temporary mounted volume: normal startup refuses missing DB; explicit maintenance initialization succeeds; student admission remains denied; restart with initialization disabled preserves enrollment. Test root-owned data directory, permission failure, native module load, runtime without source/tsx/dev dependencies and listening process UID !=0. Initially run `npm run test:identity-container` and establish failure against the absent image/entrypoint.
-- [ ] Build separate multi-stage Node-22 Debian image: npm ci --ignore-scripts, controlled better-sqlite3 rebuild with build tools in builder, tsc build, dev pruning, runtime outputs/dependencies only. Install gosu in the runtime image; scope root entrypoint work to fixed /data ownership, reject symlink/unexpected paths and exec gosu node before opening listeners. No RAILWAY_RUN_UID=0 application workaround. Do not change current probe Dockerfile/railway.json.
-- [ ] Configure identity service's Dockerfile, ON_FAILURE restart policy with three retries, 60-second healthcheck timeout and /health Railway liveness. /ready and protected requests remain closed during maintenance. Document an executable bootstrap: initialize in maintenance, remove initialize flag, reconcile/provision, then leave maintenance. It must not require SSH into a crashing uninitialized process. Do not use pre-deploy hooks to write the service volume.
-- [ ] Retain npm ci --ignore-scripts in CI/SessionStart and add only the controlled native rebuild. Pin c8 and add test:coverage to run the existing npm test suite with c8 checks at 91% for lines/functions/branches/statements, include apps/**/*.ts and packages/**/*.ts, and text/lcov reporters. Exclude only generated artifacts/test fixtures; report legacy gaps rather than excluding security code. Run typecheck, tests, coverage, mock demo, build, probe regeneration/drift and both images. Record local architecture and CI linux/amd64; check arm64 where available without claiming unobserved coverage.
-- [ ] Add private SQLite/WAL/SHM/operator artifacts to .gitignore and document dependency/build changes. Commit as `build: package identity service with controlled SQLite initialization`.
+- [ ] Write container/DB tests: image starts as Node UID without source/tsx/dev dependencies or a data volume; refuses absent/old schema/wrong marker/runtime DDL credentials; readiness/admission close on database restart, exhausted pool or owner connection loss. Recover via a new boot with old grants invalid and no frame replay. Verify migration role is not present in app environment and other service DB credentials are not shared. Run tests against the absent image to establish packaging failure.
+- [ ] Build multi-stage Node-22 Debian image using npm ci --ignore-scripts, tsc, production pruning and pg pure JavaScript runtime. USER node directly; remove all root chown/gosu/bootstrap concepts. Copy compiled migration/operator entrypoints for explicitly invoked jobs, but do not give app startup privileged database credentials. Keep existing probe Dockerfile/railway.json unchanged.
+- [ ] Configure identity Dockerfile, ON_FAILURE/three retries, 60-second health timeout and /health liveness. /ready validates DB/schema/store/ownership/maintenance; no app volume or initialization flag. Document explicit privileged initialization/migration job followed by runtime deploy, plus stop/drain-before-migration for incompatible schema changes. Record DB_TRANSPORT_MODE and CA/private-network policy without exposing URLs/passwords.
+- [ ] Add a matching-major Postgres CI service and disposable roles/databases, preserve npm ci --ignore-scripts, then run root unit/probe tests and explicit database tests. Pin c8 and run test:all with 91% checks for lines/functions/branches/statements, apps/packages includes and text/lcov reporters; exclude only generated/test artifacts and report baseline gaps honestly. DB suites must use actual pg and independent clients, never an in-memory substitute.
+- [ ] Run typecheck, unit+DB suites, coverage, mock demo, build, probe regeneration/drift, both image builds and explicit identity container smoke. Record observed architectures. Ignore private dumps/operator files and commit as `build: package identity service for private Postgres`.
+
 
 ### Task 8: Hosted native identity compatibility gate
 
@@ -195,51 +197,52 @@ Types live in the owning task's types.ts. Times are Unix milliseconds except raw
 **Interfaces:** Consume Tasks 1–7; produce IDENTITY_NATIVE_PASS or a concrete IDENTITY_NATIVE_BLOCKED evidence record. Neither status enables desktop tools.
 
 - [ ] Verify local/container gates, authenticated Auth0 access, SMTP sender, explicitly authorized test recipients/roster and Railway service inventory/spend controls. Reuse any identity service already created. Never invent provider/domain/client values or send real invitations without authorization; no artificial unit test for a dashboard action is needed.
-- [ ] Create/reuse a separate identity service plus one volume in the existing project, generate HTTPS domain, then configure its exact /mcp resource/API and the actual native client in Auth0. Prefer operator-approved CIMD/static registration; verify any alternate client-required registration instead of assuming DCR. Apply issuer/resource/client/epoch/database config, secrets only in supported stores. Bootstrap in maintenance, enroll test subjects, remove bootstrap flag and require readiness before admission.
+- [ ] Create/reuse one private Railway Postgres service (database volume only) and a separate identity service with no data volume in the existing project/environment. Disable public TCP exposure; record the selected Postgres major and align CI/test tooling before migrations. Generate the identity HTTPS domain, then configure its exact /mcp resource/API and actual native client in Auth0. Prefer operator-approved CIMD/static registration; verify any alternate client-required registration instead of assuming DCR. Provision database roles and explicitly initialize/migrate under maintenance through a privileged operator job. Give the app only its limited private DATABASE_URL, expected AUTHZ_STORE_ID and epoch/transport configuration; keep migration/backup secrets in their operator jobs. Apply issuer/resource/client settings, enroll test subjects and require readiness before opening admissions. Verify roles, bounded connection counts, private-only access and backup settings in the real account.
 - [ ] Check hosted health/metadata/401 challenge, direct authenticated MCP identity and wrong-audience/uninvited denial without logging tokens. Add real class-identity MCP config alongside both probes and configure exact network allowlists for the selected delivery path.
 - [ ] Ask the operator to run actual native cloud OAuth/discovery/class_identity for two accounts. Record branch/commit, delivery path, exposed client/version and sanitized result. Exercise expired access, supported refresh, revoked refresh, local block with a valid JWT and provider-only logout/block. Shell/SDK checks are separate evidence. Fix incompatibility with regression tests; never weaken audience/verification to pass.
 - [ ] Commit nonsecret configuration/runbook/evidence changes. A native blocker leaves the service identity-only and milestone partial; independent local policy tasks can continue.
 
 ### Task 9: Durable device credentials, pairings and leases
 
-**Files:** Create packages/storage/devices.ts, grants.ts; packages/authorization/policy.ts; packages/credentials/keychain.ts; test/durable-policy.test.ts. Extend storage types/fixtures.
+**Files:** Create packages/storage/devices.ts, grants.ts; packages/authorization/policy.ts; packages/credentials/keychain.ts; test/database/durable-policy.test.ts. Extend storage types/fixtures.
 
-**Interfaces:** Produce `enrollDevice(store: Store, input: {ownerId: string; name: string}, now: number): {deviceId: string; secret: string}`, `rotateDeviceCredential(store: Store, deviceId: string, now: number): {secret: string}`, `authenticateDevice(store: Store, secret: string, now: number): DeviceRef`, `createPairing(store: Store, input: PairingInput, now: number): {pairingId: string; code: string}`, `approvePairing(store: Store, input: {pairingId: string; deviceId: string; capabilities: readonly Capability[]}, now: number): LeaseRef`. DeviceRef has id/owner/epoch/deploymentEpoch/online state. PairingInput has ContextRef, teamId and capabilities. LeaseRef has id/context/device/team/capabilities/epoch/expiresAt/idleExpiresAt/state. Capability remains read|execute from protocol. CredentialStore exposes save/load/remove returning Promises; load returns string|null; unavailable production storage throws KEYCHAIN_UNAVAILABLE.
+**Interfaces:** Produce `enrollDevice(store: Store, input: {ownerId: string; name: string}, clock: () => number): Promise<{deviceId: string; secret: string}>`, `rotateDeviceCredential(store: Store, deviceId: string, clock: () => number): Promise<{secret: string}>`, `authenticateDevice(store: Store, secret: string, clock: () => number): Promise<DeviceRef>`, `createPairing(store: Store, input: PairingInput, clock: () => number): Promise<{pairingId: string; code: string}>`, `approvePairing(store: Store, input: {pairingId: string; deviceId: string; capabilities: readonly Capability[]}, clock: () => number): Promise<LeaseRef>`. DeviceRef has id/owner/epoch/deploymentEpoch/online state. PairingInput has ContextRef, teamId and capabilities. LeaseRef has id/context/device/team/capabilities/epoch/expiresAt/idleExpiresAt/state. Capability remains read|execute from protocol. CredentialStore exposes save/load/remove returning Promises; load returns string|null; unavailable production storage throws KEYCHAIN_UNAVAILABLE.
 
-- [ ] Write real-file SQL tests for credential purpose separation, rotation/revoke/expiry/epoch, same-team wrong-owner denial, hashed pairing codes, expiry/replay/narrowing and concurrent approvals from two DB connections. Exactly one approval succeeds and one active lease exists. Test injected CredentialStore and unavailable adapter; no filesystem fallback/test-adapter selection in production.
-- [ ] Run `node --import tsx --test test/durable-policy.test.ts`; establish red for missing durable behavior.
-- [ ] Implement transactions, 256-bit device secrets, 128-bit pair codes, fingerprints only, partial unique active-lease indexes by user/device and current owner/membership/epoch checks. Retain five-minute pairing, one-hour lease and ten-minute idle defaults. Secrets are returned only on issuance. No public enrollment/WSS is added; test harness supplies devices/contexts.
+- [ ] Write real Postgres integration tests for credential purpose separation, rotation/revoke/expiry/epoch, same-team wrong-owner denial, hashed pairing codes, expiry/replay/narrowing and concurrent approvals from two DB connections. Exactly one approval succeeds and one active lease exists. Test injected CredentialStore and unavailable adapter; no filesystem fallback/test-adapter selection in production.
+- [ ] Run `node --import tsx --test test/database/durable-policy.test.ts`; establish red for missing durable behavior.
+- [ ] Implement single-client pg transactions, SELECT FOR UPDATE in a stable user/device/context/grant lock order, 256-bit device secrets, 128-bit pair codes, fingerprints only, partial unique active-lease indexes by user/device and current owner/membership/epoch checks using a fresh clock after lock waits. Partial unique indexes backstop races; timeouts/deadlocks return controlled conflicts without automatic mutation retry. Retain five-minute pairing, one-hour lease and ten-minute idle defaults. Secrets are returned only on issuance. No public enrollment/WSS is added; test harness supplies devices/contexts.
 - [ ] Run policy/enrollment/storage suites and reopen DB; device enrollment/revocation persists while live leases are invalid. Confirm no raw secret/code is stored/logged. Document real OS adapters as milestone 3 evidence.
 - [ ] Commit as `feat: persist device ownership and single-use lease policy`.
 
 ### Task 10: Atomic admission, execution uncertainty and revocation
 
-**Files:** Create packages/storage/operations.ts, revocations.ts; test/durable-dispatch.test.ts. Extend authorization policy/runtime and operator commands.
+**Files:** Create packages/storage/operations.ts, revocations.ts; test/database/durable-dispatch.test.ts. Extend authorization policy/runtime and operator commands.
 
-**Interfaces:** Produce `admitOperation(store: Store, input: {context: ContextRef; leaseId: string; tool: Tool; write: boolean; now: number}): OperationRef`, `completeOperation(store: Store, input: {requestId: string; deviceId: string; leaseId: string; epoch: number; outcome: 'completed' | 'uncertain'; now: number}): void`, and `revokeAuthorization(store: Store, command: RevocationCommand, runtime: RuntimeInvalidator, now: number): void`. OperationRef holds only request/device/lease/context/epoch/deadline/write metadata; Tool comes from current protocol. RevocationCommand covers disable, membership removal, resource block, token fingerprint and device revoke. Dispatch is an injected local test transport.
+**Interfaces:** Produce `admitOperation(store: Store, input: {context: ContextRef; leaseId: string; tool: Tool; write: boolean; clock: () => number}): Promise<OperationRef>`, `completeOperation(store: Store, input: {requestId: string; deviceId: string; leaseId: string; epoch: number; outcome: 'completed' | 'uncertain'; clock: () => number}): Promise<void>`, and `revokeAuthorization(store: Store, command: RevocationCommand, runtime: RuntimeInvalidator, coordinator: DispatchCoordinator, clock: () => number): Promise<void>`. OperationRef holds only request/device/lease/context/epoch/deadline/write metadata; Tool comes from current protocol. RevocationCommand covers disable, membership removal, resource block, token fingerprint and device revoke. Dispatch is an injected local test transport. Define `DispatchCoordinator.withFence<T>(action: () => Promise<T>): Promise<T>` and `dispatchAuthorized(deps: {store: Store; coordinator: DispatchCoordinator; transport: LocalTestTransport}, input: OperationInput): Promise<OperationRef>`, where OperationInput is admitOperation's input type. Both dispatchAuthorized and revokeAuthorization use the same coordinator.
 
 - [ ] Test concurrent writers/revoke, next-dispatch denial after disable/removal, token-only versus resource-wide blocks, mismatched/late response, interrupted send and crash after durable intent. Assert no resend after reopening:
   ```ts
   assert.equal(recoveredOperation.state, 'uncertain');
   assert.equal(testTransport.sent.length, 0);
-  assert.throws(() => admitOperation(reopened, staleRequest), /NOT_PAIRED|STALE_CONTEXT/);
+  await assert.rejects(admitOperation(reopened, staleRequest), /NOT_PAIRED|STALE_CONTEXT/);
   ```
-- [ ] Run `node --import tsx --test test/durable-dispatch.test.ts`; establish red for missing admission/revocation semantics.
-- [ ] Implement metadata intent-before-send, exclusive write ownership, exact correlation and 30-second RPC deadline. Coordinate current policy/commit/synchronous send in the owning process without an await gap that permits revoked dispatch. Revoke/notify/reject pending operations after durable revocation; writes with uncertain outcome return EXECUTION_UNCERTAIN, never replay or rollback claims. No payload queue or production transport.
+- [ ] Run `node --import tsx --test test/database/durable-dispatch.test.ts`; establish red for missing admission/revocation semantics.
+- [ ] Implement metadata intent-before-send, exclusive write ownership, exact correlation and 30-second RPC deadline. Hold the coordinator fence across awaited current-state row locks, intent transaction COMMIT, fresh deadline/readiness check and synchronous transport enqueue; revoke uses that same fence through durable denial and runtime invalidation before acknowledgement. Release SQL transactions/fence before awaiting RPC results. A lost COMMIT acknowledgement is uncertain and must never enqueue/retry. Test forced interleavings, rollback/client release and SQL deadlock/lock-timeout denial. No routine can bypass the fence just because a pg query awaits. Revoke/notify/reject pending operations after durable revocation; writes with uncertain outcome return EXECUTION_UNCERTAIN, never replay or rollback claims. No payload queue or production transport.
 - [ ] Run policy/dispatch/operator/identity suites; still-valid JWTs must fail after local block and after restart. Assert no Management API call occurs in request authorization.
 - [ ] Commit as `feat: enforce atomic durable dispatch and local revocation`.
 
-### Task 11: Backups, safe restore and retention
+### Task 11: Postgres backup, isolated restore and retention
 
-**Files:** Create packages/storage/backup.ts, retention.ts; test/recovery.test.ts; docs/IDENTITY_OPERATIONS.md. Extend recovery/admin commands and artifact exclusions.
+**Files:** Create packages/storage/retention.ts, scripts/validate-identity-store.ts, test/support/postgres-tools.ts, test/database/recovery.test.ts, docs/IDENTITY_OPERATIONS.md. Extend recovery/admin commands and private dump exclusions.
 
-**Interfaces:** Produce `backupStore(store: Store, destination: string): Promise<void>`, `checkStoreIntegrity(path: string): IntegrityReport`, `runRetention(store: Store, now: number): RetentionReport`. Reports contain counts/status codes only. Maintenance/reconcile commands reuse Task 3 startup/epoch behavior, not another recovery implementation. Add `reconcileRoster(store: Store, approved: readonly {userId:string; teamId:string}[], runtime: RuntimeInvalidator, now:number): {activated:number}`; it requires maintenance, activates only explicitly approved extant subject-bound records and never reactivates device credentials or leases. Unlisted restored users/memberships remain suspended.
+**Interfaces:** Produce `validateRestoredStore(connection: MigrationConnection, expectedStoreId: string): Promise<IntegrityReport>`, `runRetention(store: Store, clock: () => number): Promise<RetentionReport>` and `reconcileRoster(store: Store, approved: readonly {userId:string; teamId:string}[], runtime: RuntimeInvalidator, clock: () => number): Promise<{activated:number}>`. MigrationConnection is an operator-only validated credential, never part of Store. The test-only helper `runPostgresTool(tool: 'pg_dump'|'pg_restore', args: readonly string[], connection: TestConnection): Promise<void>` runs matching-major tools locally or in the explicit disposable test container. Production export/restore uses the same documented flags from the authenticated Railway database shell; no Node installation or backup login is required in the identity app. Reports contain counts/status only; reconciliation requires maintenance, reactivates only explicitly approved existing subject-bound memberships and never devices/leases.
 
-- [ ] Test online backup during WAL writes, restore of old permissions/credentials/leases, corrupt DB/FK violations, unchanged versus advanced epoch and missing volume. New epoch plus maintenance must suspend restored users/memberships and reject every old credential/context. Test 30-day audit/course-close-plus-30-day PII boundaries without deleting active enforcement/FKs.
-- [ ] Run `node --import tsx --test test/recovery.test.ts`; establish red for backup/retention behavior while existing recovery tests remain intact.
-- [ ] Implement SQLite online backup/integrity APIs, never copying only a live main DB. Expire token denials only after expiry+60 seconds. Remove expired pairing secrets/eligible PII without destroying retained enforcement/audit records; run bounded cleanup within the service, not a new worker.
-- [ ] Write/exercise restore sequence: external maintenance, stop admissions, restore, integrity check, advance AUTHZ_DEPLOY_EPOCH, reconcile suspended roster and reissue device credentials, verify denial before resume. Configure daily Railway backups where available and perform an isolated hosted restore; record observed versus pending account steps and platform backup retention. Protect backup access.
-- [ ] Run recovery/storage/durable suites, verify no restored authority becomes active and commit as `feat: add safe authority backups restore and retention`.
+- [ ] Test pg_dump custom-format export during concurrent committed writes, pg_restore into a separate empty disposable target, wrong schema/store marker, missing/invalid constraints and app-role DDL denial. Restore old enrollment/credentials while newer tokens exist; new deployment epoch plus maintenance must suspend old permissions and reject every old context/credential. Test 30-day audit/course-close-plus-30-day PII boundaries without breaking FKs/enforcement.
+- [ ] Run `node --import tsx --test test/database/recovery.test.ts`; establish red for backup/validation/retention behavior using real Postgres and matching-major pg_dump/pg_restore tools. Tests never restore into the active hosted database.
+- [ ] Implement/test the operator procedure and disposable-tool harness for pg_dump with schema=mpd_identity, custom format, no-owner/no-privileges; protect/encrypt output and use protected credentials, not command-line URLs. Restore with exit-on-error, no-owner and no-privileges into an isolated target under the migration/owner role; validate migration checksums, tables/constraints and authorization invariants, then explicitly regrant target roles. Do not install backup credentials/tools into the app request path. Apply bounded transactional retention with denial expiry+60 seconds and preserved enforcement metadata.
+- [ ] Exercise runbook: external maintenance, stop/drain identity app, restore isolated target, validate, provision/rotate target database roles/credentials, advance AUTHZ_DEPLOY_EPOCH, switch private DATABASE_URL, reconcile suspended roster and reissue device credentials, prove denial before resume. Keep original DB isolated for rollback; do not delete it without explicit authorization. Enable daily Railway DB-service backups and record actual retention/cost; PITR is optional only after explicit account/cost review. Record observed hosted restore versus pending prerequisites.
+- [ ] Run recovery/storage/durable suites, verify no restored authority becomes active and commit as `feat: add Postgres authority backup restore and retention`.
+
 
 ### Task 12: Native same-user context evidence gate
 
@@ -259,9 +262,9 @@ Types live in the owning task's types.ts. Times are Unix milliseconds except raw
 
 **Interfaces:** Consume prior task outputs; keep automated/local, direct hosted and operator-reported native evidence separate.
 
-- [ ] In a clean execution checkout run npm ci --ignore-scripts, controlled SQLite rebuild, typecheck, full tests, test:coverage (>90% per repo instructions), mock demo, build, probe regeneration/drift and both image smoke checks. Repair actual failures with meaningful regression tests; do not reuse old results as fresh verification or hide baseline coverage gaps.
+- [ ] In a clean execution checkout run npm ci --ignore-scripts, start the explicit disposable Postgres service, then typecheck, root unit/probe tests, database integration tests, test:coverage (>90% per repo instructions), mock demo, build, probe regeneration/drift and both image smoke checks. Repair actual failures with meaningful regression tests; do not reuse old results as fresh verification or hide baseline coverage gaps.
 - [ ] Fill the spec acceptance matrix with native account/refresh evidence, isolated restore evidence and Task 12 outcome. Full milestone acceptance requires all gates; otherwise label identity delivery partial and name the exact missing integration mechanism/input. Do not claim real keychain/WSS/Blender success.
-- [ ] Perform the execution method's independent review of shared package isolation, claims/audiences, SQL/races, current revocation, logging, bootstrap/UID/restore and production entrypoints. Check that test bindings/fixture auth cannot enter production and second-server tests pass.
+- [ ] Perform the execution method's independent review of shared package isolation, claims/audiences, SQL/races, current revocation, logging, database roles/pool/owner lock/restore and production entrypoints. Check that test bindings/fixture auth cannot enter production and second-server tests pass.
 - [ ] Update handoff with actual nonsecret issuer/resource/client facts, service/deployment IDs, commits/domains, native path/results, operator recovery instructions and usage review. Retain only intentionally needed services; do not delete services without explicit authorization.
 - [ ] Commit verified fixes/docs and push main after inspecting the diff. Report completed checks and honest acceptance status; move to milestone 3 only when its prerequisites are satisfied and the operator asks to continue.
 
@@ -272,7 +275,7 @@ Types live in the owning task's types.ts. Times are Unix milliseconds except raw
 - Section 5: Tasks 1–2, 5, 7–8 cover strict OAuth resource-server behavior and native compatibility.
 - Sections 6–7: Tasks 3–4, 6, 9–10 cover durable schema/policy, credentials, refresh limits and immediate local denial.
 - Section 8: Task 12 is a real-client gate with explicit blocked outcome, not a mock substitute.
-- Sections 9–10: Tasks 3, 7–8, 11 cover restart, non-root bootstrap, volume/restore, retention and budget review.
+- Sections 9–10: Tasks 3, 7–8, 11 cover restart, non-root app deployment, private database migrations/roles, restore, retention and budget review.
 - Sections 11–12: Tasks 8, 12–13 obtain external inputs and record the full acceptance matrix.
 
 Review the exact function/type references across tasks, all five Review Focus cases, link/section structure, no placeholder decisions and no accidental desktop implementation. Concrete tenant/resource/client/sender values belong to authenticated Task 8 setup because they do not exist yet; do not invent them.
@@ -280,3 +283,7 @@ Review the exact function/type references across tasks, all five Review Focus ca
 ## Execution handoff
 
 No execution method has been selected. Review the plan before implementation. Recommend native execution for this solo pilot: auth/store/runtime interfaces are tightly dependent and one implementer can maintain consistency, followed by the fresh independent final review required by the execution skill. Subagent-driven execution adds separate implementer/reviewer gates per task at greater context cost. Use the selected skill after plan review; writing this plan does not begin implementation.
+
+## PostgreSQL revision review
+
+Storage selection supersedes the previous local-file design. All repository signatures now return Promises; transaction tests use a real matching-major database, migrations use a separate role/job, app startup validates rather than creates schema, and dispatch/revocation coordinate awaited DB work. The app stays single-owner despite Postgres supporting multiple connections. Native OAuth/session gates remain required. No database, dependency, service or product code was changed while revising this document.

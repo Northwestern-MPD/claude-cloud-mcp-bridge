@@ -1,15 +1,15 @@
 # Milestone 2: reusable class MCP identity and durable authorization
 
 Date: October 17, 2026 (America/Chicago)
-Status: design approved by the operator on October 17, 2026. The [implementation plan](../plans/2026-10-17-milestone-2-identity-authorization.md) is prepared for review; implementation, account provisioning and production auth verification have not started.
+Status: design approved by the operator on October 17, 2026; storage revised to Railway Postgres at the operator's request the same day. The [implementation plan](../plans/2026-10-17-milestone-2-identity-authorization.md) is prepared for review; implementation, account provisioning and production auth verification have not started.
 
 ## 1. Intent and accepted decisions
 
 Students use their own identities to access class MCP servers. Each server authorizes its own operations. The Blender bridge additionally requires ownership of the selected laptop, explicit local consent and a current work grant. Successful login does not authorize desktop control.
 
-The operator approved Auth0 plus SQLite and confirmed that invited, verified email is sufficient for the pilot. Northwestern NetID/enterprise SSO is not required. The design must support additional class MCP servers without copying Blender-specific policy or introducing a shared desktop bearer key.
+The operator approved Auth0 plus Railway Postgres and confirmed that invited, verified email is sufficient for the pilot. Northwestern NetID/enterprise SSO is not required. The design must support additional class MCP servers without copying Blender-specific policy or introducing a shared desktop bearer key.
 
-Keep the pilot on Railway with one authorization-service instance and a persistent volume. Keep the existing public ping probe separate and harmless. The operator prefers direct commits/pushes to main and no PR requirement.
+Keep the pilot on Railway with one authorization-service instance and one private Railway Postgres instance. Only the database service has a persistent volume; the identity app has no data volume. Keep the existing public ping probe separate and harmless. The operator prefers direct commits/pushes to main and no PR requirement.
 
 Success means real individual authentication, durable and revocable enrollment, verified separation of resources/accounts, and explicit evidence about simultaneous sessions belonging to the same student. It does not mean that an authenticated student can already operate Blender.
 
@@ -20,7 +20,7 @@ Milestone 2 delivers:
 - A reusable TypeScript MCP authentication package, initially maintained in this repository.
 - Auth0 configuration/runbooks for invited email-code login, MCP OAuth and per-server audiences/scopes.
 - A separate authenticated HTTPS MCP entrypoint exposing only `class_identity`, plus public health/discovery metadata.
-- A SQLite repository for identities, course/team membership, devices, credentials, work contexts, pairings, leases, revocations and audit metadata.
+- A PostgreSQL repository for identities, course/team membership, devices, credentials, work contexts, pairings, leases, revocations and audit metadata.
 - Operator enrollment/disable/revoke commands and safe startup, backup and restore procedures.
 - Automated verification plus actual Auth0/Claude cloud compatibility evidence.
 
@@ -38,7 +38,7 @@ flowchart TD
     S --> V[Reusable token verifier and MCP auth metadata]
     V --> P[Verified principal]
     P --> R[Server authorization policy]
-    R --> D[(SQLite on Railway volume)]
+    R --> D[(Railway Postgres)]
     R --> I[Identity-only tool in milestone 2]
 ```
 
@@ -57,9 +57,9 @@ Create `packages/auth/` with an eventual private package identity `@northwestern
 | `authenticationChallenge` | Produce a standards-compatible 401 challenge without leaking token contents |
 | `VerifiedPrincipal` | Issuer, subject, authenticated client ID, effective scopes, issued/expiry times and verified-email evidence; optional provider claims only when validated |
 
-The package must not import the Blender policy engine, SQLite, connector code or fake adapters. Resource-specific authorization is injected by each service. Token parsing, metadata and error behavior are shared; tools, memberships, local consent and leases are not automatically granted by the package.
+The package must not import the Blender policy engine, PostgreSQL, connector code or fake adapters. Resource-specific authorization is injected by each service. Token parsing, metadata and error behavior are shared; tools, memberships, local consent and leases are not automatically granted by the package.
 
-Keep SQLite access in `packages/storage/` and bridge authorization in `packages/authorization/`. Introduce a repository interface around current policy persistence without rewriting unrelated mock behavior. Retain existing fixture entrypoints and tests as explicitly local development paths.
+Keep PostgreSQL access in `packages/storage/` and bridge authorization in `packages/authorization/`. Introduce a repository interface around current policy persistence without rewriting unrelated mock behavior. Retain existing fixture entrypoints and tests as explicitly local development paths.
 
 ### Additional class servers
 
@@ -67,7 +67,7 @@ Use one Auth0 production tenant as the class identity authority. Register each M
 
 Register OAuth client applications separately from API resources: Claude is a client; our MCP service is a resource. A server can have multiple permitted clients, and a client may seek consent for different servers. A provider client ID, browser SSO session or email address is not a course/team identifier.
 
-Reuse student identity as `(issuer, subject)`. Other servers can use their own enrollment store through the repository interface. Sharing a live class roster across separately deployed services requires an authenticated roster API in a later slice; milestone 2 does not introduce that API or promise fleet-wide immediate revocation. Never mount/copy this live SQLite database across independent services as an integration mechanism. Sharing login/package code works without sharing database files.
+Reuse student identity as `(issuer, subject)`. Other servers can use their own enrollment store through the repository interface. Sharing a live class roster across separately deployed services requires an authenticated roster API in a later slice; milestone 2 does not introduce that API or promise fleet-wide immediate revocation. Other class MCP servers do not receive this service's database credentials or table privileges. If a later service needs database access, give it an isolated schema/role or a narrow authorization API under a separate design. Sharing the Auth0 tenant/package does not imply sharing all database authority.
 
 A second server verifier, using a different audience and a minimal test authorization policy, is required as a reuse acceptance fixture. It is not another public service.
 
@@ -82,7 +82,7 @@ Operator enrollment flow:
 3. Disable signup on the email connection and enable it only for the approved OAuth clients. Connection-wide scope is intentional for this pilot tenant; a different class server can authorize a different subset of the tenant's users locally.
 4. Send the invitation through the production email sender. An invitation identifies access that is pending; it is not a bearer credential granting MCP or desktop permissions.
 5. The student follows the client's native OAuth flow and proves email control using Auth0's code. A signed custom access-token claim conveys verified-email status. An Auth0 Action copies it from Auth0's trusted user verification state, never from request parameters or editable user metadata.
-6. On the first authenticated MCP call, atomically activate the matching pending enrollment only when issuer/subject match and verified-email evidence is true. Require an unexpired invitation; pilot invitation lifetime is seven days. Uninvited, expired, revoked or disabled records remain denied even with a valid Auth0 login.
+6. On the first authenticated MCP call, transactionally activate the matching pending enrollment only when issuer/subject match and verified-email evidence is true. Require an unexpired invitation; pilot invitation lifetime is seven days. Uninvited, expired, revoked or disabled records remain denied even with a valid Auth0 login.
 
 Use the literal custom claim `https://github.com/Northwestern-MPD/claims/email_verified` across the Auth0 Action and shared package. This is a claim namespace, not an endpoint to fetch. The verifier requires that exact signed claim to equal boolean `true`; export its name as a shared constant so class servers cannot drift. Do not rely on default access tokens containing email/profile fields, and do not accept an ID token as an API access token.
 
@@ -92,12 +92,12 @@ Operator commands are administrative functions, not MCP tools. Provisioning uses
 
 ## 5. OAuth resource-server behavior
 
-Add a new production entrypoint in `apps/identity/`; do not widen the loopback mock gateway. Deploy it as a separate Railway service with one replica and its own HTTPS domain/volume. Reuse the existing Railway project. The current ping service and its STDIO/HTTP config entries remain available for comparison.
+Add a new production entrypoint in `apps/identity/`; do not widen the loopback mock gateway. Deploy it as a separate Railway service with one replica and its own HTTPS domain, connecting to private Postgres without an app data volume. Reuse the existing Railway project. The current ping service and its STDIO/HTTP config entries remain available for comparison.
 
 | Surface | Behavior |
 |---|---|
 | `GET /health` | Public liveness, no identities, tokens or configuration values |
-| `GET /ready` | Ready only after configuration, SQLite migrations and startup revocation complete; no internal diagnostics in the public response |
+| `GET /ready` | Ready only after configuration, schema/store validation, runtime ownership and startup revocation complete; no internal diagnostics in the public response |
 | Protected-resource metadata | RFC 9728 document identifying this service and Auth0, at the standard resource-appropriate well-known path |
 | `POST /mcp` | Authenticated MCP initialization, catalogue and identity invocation; enforce auth on every request |
 | MCP session transport methods | Support methods required by the pinned SDK; each request is reauthenticated and checked for principal/context ownership |
@@ -118,9 +118,13 @@ Token policy:
 
 Exact deployment resource URI, issuer and client registrations are operator configuration inputs; the signed verification-claim name is fixed above. Examples in docs must be labeled examples, not working resources. `class-identity` is the proposed MCP config name; add its actual URL only after the new service exists. A native unauthenticated ping does not prove OAuth UI support, refresh or credential delivery in Claude cloud; test each through the selected client path.
 
-## 6. SQLite data model and authorization transactions
+## 6. PostgreSQL data model and authorization transactions
 
-Use `better-sqlite3` with parameterized SQL and versioned migrations, pinned in the existing npm lockfile after checking Node 22/container support. Avoid introducing an ORM or another database service for the pilot. Database path: `/data/authorization.sqlite` on the persistent Railway volume, never the container's ephemeral application filesystem.
+Use the pure JavaScript `pg` driver with parameterized SQL and versioned migrations, pinned after checking Node 22 compatibility. Do not add `pg-native` or an ORM. Deploy one Railway Postgres service in the same project/environment as the identity service. Record its supported major version before provisioning; local/CI databases must match it. The application's storage is a dedicated database/schema, never a local file.
+
+Use private Railway networking with no public TCP proxy. For the pilot, explicit `railway-private` transport mode permits a non-TLS pg connection only to the configured `.railway.internal` host inside Railway's encrypted private network. External/admin connections require certificate-verified TLS with a trusted CA; never use rejectUnauthorized=false. Local disposable tests may use plaintext loopback/CI-service networking under an explicit test mode. Connection URLs and passwords are secrets and are never logged.
+
+Separate database authority: a NOLOGIN schema owner; a migration login allowed to act as that owner for DDL; an application login limited to CONNECT/USAGE and the required DML/sequences in `mpd_identity`; and a backup login with read-only access to that schema. Revoke unnecessary PUBLIC database/schema privileges. The app has no superuser, CREATEDB, CREATEROLE, schema-creation or migration rights. Migration/admin/backup secrets are supplied only to operator jobs; the normal serving process receives only its application DATABASE_URL. Other MCP servers never reuse that login.
 
 | Record | Required information and constraints |
 |---|---|
@@ -136,13 +140,17 @@ Use `better-sqlite3` with parameterized SQL and versioned migrations, pinned in 
 | `operation_attempts` | Request/correlation ID, lease/device/epoch, read/write classification, admitted/dispatched/completed/uncertain state and timestamps; no tool arguments or replay payload |
 | `token_denials`, `user_resource_blocks` | Token fingerprints, local subject/resource blocks, validity deadlines and administrative reason codes |
 | `audit_events` | Timestamp, internal actor/resource/device/grant IDs as applicable, action, outcome/reason, correlation ID; no request bodies |
-| `schema_migrations`, `service_state` | Migration version, deployment authorization epoch and startup boot ID |
+| `schema_migrations`, `service_state` | Migration version/checksum, expected store UUID, deployment authorization epoch and startup boot ID |
 
-Enable foreign keys on every connection, WAL journaling, `synchronous=FULL`, a bounded busy timeout and restrictive volume/file permissions. Keep SQLite and WAL/SHM files together on the volume. Run migrations once during startup, before readiness, under an exclusive migration transaction. Abort startup on failure; do not silently downgrade a schema.
+Use a bounded pg pool: maximum five request connections, 5-second connection timeout, 30-second idle timeout, 5-second statement timeout, 2-second lock timeout and 10-second idle-in-transaction timeout. A separate dedicated connection holds the single-owner runtime advisory lock; it is not a pool checkout retained indefinitely. Handle pool/client errors, always release checked-out clients and close both pool and owner connection on shutdown. Loss of database connectivity or ownership disables admission/dispatch; readiness becomes unavailable. Never fall back to in-memory authority or replay a mutation after reconnection.
 
-Persist approval, single-use consumption, lease creation, revocation and security audit events in transactions. Partial unique indexes/transactional checks enforce one active lease per user and device under the current pilot policy. Expired leases are transitioned to terminal state before new approval; wall-clock expiry is always checked, even if background cleanup has not run. A write-ownership transition is atomic; critical authorization reads and the decision to dispatch are coordinated in the same process to avoid a revocation/check race. Persist a metadata-only operation intent before sending a mutation; an intent without a confirmed terminal result becomes execution-uncertain after interruption, even if sending may not have occurred. This conservative state is an audit record, never a replay queue. A transactional outbox is unnecessary while one process owns transport dispatch; never add a durable mutation queue.
+Migrations run as an explicit operator job under the migration role before app admission, serialized by a schema-migration advisory lock. Use transactional versioned migrations with checksums; refuse an unsupported newer schema or a failed/partial migration. Initialization writes an explicit store UUID marker under maintenance. Startup checks the schema version and configured expected store ID; it never creates a missing database/schema or runs DDL as the application role. A second app instance unable to acquire the runtime-owner advisory lock refuses readiness rather than invalidating the first instance's grants. Configured replica count remains one.
 
-Persist policy records and terminal outcomes, not live sockets, timers, queued tool requests, scene data, Python code or screenshots. Bounded in-memory transport state can refer to durable IDs. Distinguish unknown mutation outcome from successful cancellation.
+Every transaction uses one checked-out PoolClient from BEGIN through COMMIT/ROLLBACK; never combine pool.query calls across a transaction. Under READ COMMITTED, lock the affected user/membership/device/context/pairing/lease rows in a consistent documented order with SELECT FOR UPDATE. Partial unique indexes additionally enforce one active lease per user and device. Approval/consumption, lease creation, revocation and their audit events commit atomically. Expired leases are transitioned before new approval, and deadlines are checked using a fresh clock after lock waits. Map unique conflicts, lock timeouts, serialization failures and deadlocks to controlled denial/conflict responses; do not retry a mutation automatically.
+
+Because pg operations await network I/O, a single-process dispatch coordinator serializes operation admission and administrative revocation. It holds an authority fence while checking current state in a transaction, committing a metadata-only operation intent, rechecking readiness/deadlines and synchronously enqueueing a frame to the local test transport. The revocation path uses the same fence, commits denial, invalidates runtime authority and only then acknowledges success. Do not hold database transactions or the coordinator while awaiting a remote execution result. Another writer can never bypass the coordinator through a public admin endpoint or direct shared database credentials.
+
+An intent without a confirmed terminal result is execution-uncertain after interruption, including a connection loss during COMMIT. A reconnect or ambiguous commit must never cause a resend. Persist policy/operation metadata, not sockets, timers, tool arguments, scene data, Python or screenshots. In-flight operations cannot be rolled back by revocation; preserve uncertain-outcome reporting.
 
 ## 7. Revocation, refresh and credentials
 
@@ -174,36 +182,40 @@ The durable model supports a verified context binding but does not assert that A
 
 ## 9. Restart, backup and restore
 
-On every process start, generate a new boot ID, invalidate prior work contexts, revoke pending pairings and active leases, mark devices offline, and advance device epochs in a transaction before readiness. Preserve users, memberships, enrolled device records, credential revocations and audit history. Any interrupted mutation is recorded as execution-uncertain where applicable; do not redispatch it. Devices must authenticate/reconnect and obtain fresh locally approved leases in milestone 3.
+Before readiness, acquire the dedicated runtime-owner advisory lock, verify schema/store ID/maintenance state and generate a new boot ID. In one transaction invalidate prior contexts, pending pairings and active leases, mark devices offline, advance epochs and mark unfinished mutation intents uncertain. Preserve enrollment, credentials and revocation history. A database restart or lost ownership ends the current serving lifetime: close admission/transports, reject pending work and exit; a new process must complete recovery before admission. No automatic mutating retry or silent continuation using cached grants.
 
-Startup missing an expected database is an error, not permission to create a fresh empty authority store. Require explicit operator initialization for the first database; readiness fails if the expected volume/marker/permissions are absent. The current non-root Docker runtime must receive a writable data directory through deliberate ownership setup; do not run the whole application as root to bypass volume permissions.
+Initial provisioning creates the Postgres database, roles and schema through explicit privileged operator commands. Apply migrations and write the store marker while maintenance is enabled, then deploy the app with its limited role and expected store ID. Missing DB/schema, wrong store ID, privilege failure or unsupported schema fails closed. There is no app-file initialization flag, volume ownership repair or root startup helper.
 
-Use scheduled daily Railway volume backups and verify an application-consistent restore. Include a SQLite online-backup artifact when checking consistency, and never copy only the live main database while ignoring WAL. Test restoration into an isolated environment before relying on the schedule. Backups and their access are security-sensitive because they contain roster and revocation metadata.
+Enable daily Railway backups on the database service and record availability, retention and cost from the actual account. Add a portable schema-scoped logical backup using pg_dump custom format, without embedded ownership/ACL restoration; take it with the dedicated backup role and protect/encrypt the artifact. Use matching-version pg_dump/pg_restore tools in the operator environment, with credentials in protected configuration rather than command-line URLs or logs. Restore with pg_restore --exit-on-error --no-owner --no-privileges under the target migration/owner role, then explicitly regrant limited target roles. Use an isolated target and validate schema versions/checksums, expected tables/constraints, role permissions and representative authorization invariants. Never validate a restore by replaying a mutation. PITR is optional only after its account support/cost and a restore drill are checked.
 
-Before a production restore, set maintenance mode outside the database, stop admission, restore, run integrity/foreign-key checks and advance `AUTHZ_DEPLOY_EPOCH` in Railway configuration. On epoch mismatch, startup invalidates all contexts/device credentials and suspends users/memberships before readiness; admissions remain denied in maintenance mode. The externally configured epoch prevents restored old work/device credentials from becoming current merely because the database rolled back. Reconcile restored users/memberships against the current roster/revocation records; re-enroll/reissue device credentials deliberately. Resume only after operator review and a successful revocation test. No automatic failover to a restored device/grant is allowed.
+For production recovery: set maintenance outside the database, stop/drain the identity app, restore into a separate target, validate it, provision target roles/grants, rotate database credentials, advance AUTHZ_DEPLOY_EPOCH in Railway config, then switch the app's private DATABASE_URL. The restored store marker must match AUTHZ_STORE_ID. Epoch mismatch suspends restored users/memberships and invalidates all old contexts/device credentials before admission; reconcile against the current roster/revocation records and deliberately reissue device credentials. Reopen only after an operator denial/revocation check. Keep the original database isolated for rollback until explicitly retired; restoring does not authorize deleting it.
 
-Retain metadata audit events for 30 days by default; delete expired pairing codes/token denials once no longer needed for enforcement. Retain revoked device/grant metadata through the audit period. Remove roster PII at course close plus 30 days unless an operator-approved retention requirement supersedes it. Keep audit/backups inaccessible to student MCP tools and document backup retention separately.
+Retain audit metadata for 30 days, token denials through token expiry plus clock tolerance and roster PII through course close plus 30 days, unless an approved requirement supersedes those defaults. Keep necessary enforcement/FK records. Protect backup access and document platform backup retention separately; application deletion does not erase historical backups immediately.
 
 ## 10. Deployment, configuration and costs
 
-Deploy the new identity service with its own Docker entrypoint/domain and one persistent volume, in the existing Railway project. It runs the authenticated identity surface only; never start `gateway:mock` publicly. Keep the existing public ping service unchanged during verification. Future desktop routing requires a separate explicit rollout after its gates pass.
+Add an identity-only Node service and one private Railway Postgres service to the existing project/environment. The database owns its persistent volume; the Node image runs as the Node user and has no data volume or native database dependency. Keep the existing public ping service unchanged during verification. Set one identity replica; database sharing alone does not implement WSS multi-instance routing or independent cloud work contexts.
 
-Required configuration is validated at startup:
+Required configuration is validated before admission:
 
 | Setting | Purpose |
 |---|---|
-| `AUTH0_ISSUER`, `AUTH0_JWKS_URI` | Trusted canonical Auth0 environment and keys; issuer/JWKS relationship validated by operator configuration |
-| `MCP_RESOURCE_URI`, `AUTH0_ALLOWED_CLIENT_IDS` | Exact identity-service audience and approved native clients |
-| `AUTHZ_DATABASE_PATH` | Absolute database path under the mounted `/data` directory |
-| `AUTHZ_DEPLOY_EPOCH` | Operator-controlled credential invalidation epoch, changed on restore/security reset |
-| `AUTHZ_MAINTENANCE` | Deny admissions while restoring/reconciling state |
-| `PORT`, deployment origin | Railway port and explicit external origin/Host policy; never infer trusted URLs from arbitrary headers |
+| AUTH0_ISSUER, AUTH0_JWKS_URI | Trusted canonical issuer/key source |
+| MCP_RESOURCE_URI, AUTH0_ALLOWED_CLIENT_IDS | Exact resource audience and approved clients |
+| DATABASE_URL | Secret private connection using the limited application role, with explicit database name |
+| DB_TRANSPORT_MODE, DB_CA_CERT | Explicit railway-private, verify-full or local-test policy; trusted CA required for external TLS |
+| AUTHZ_STORE_ID | Expected UUID marker of this logical authority store; detects wrong/empty databases |
+| AUTHZ_DEPLOY_EPOCH | External credential invalidation epoch, advanced after restore/security reset |
+| AUTHZ_MAINTENANCE | Deny admission during initialization, migration or reconciliation |
+| PORT, deployment origin | Railway port and explicit origin/Host policy |
 
-Auth0 provisioning credentials and SMTP credentials belong in the operator/provider's secret configuration, not in this resource server's normal request path. Native client secrets, if required by the verified client registration, belong only in the supported client configuration/secret store and are never committed.
+MIGRATION_DATABASE_URL and BACKUP_DATABASE_URL are separate operator-job secrets, never supplied to the normal app process. Test database credentials are disposable and never point at the hosted authority store. Auth0 Management and SMTP credentials remain outside the normal request-serving process. Native client secrets, if required by the verified registration, belong only in supported client secret storage and are never committed.
 
-Limit JSON bodies to 64 KiB, bound authenticated sessions as in the current pilot, enforce per-user/IP admission limits and finite request/header timeouts, and reject unapproved browser Origins. The native MCP bearer endpoint must not gain cookie-based authority. Local health/readiness may remain callable without identity; their responses contain no sensitive details.
+Retain 64 KiB body bounds, session/user/IP limits, finite timeouts and rejection of unapproved browser Origins. Health is public liveness; readiness also checks database connectivity, expected schema/store, runtime ownership and maintenance. The native MCP bearer endpoint must not gain cookie-based authority. Public health/readiness responses contain no sensitive details. When Postgres becomes unavailable after startup, protected requests return a bounded 503, never cached permission success.
 
-Check Auth0 tenant plan limits and production SMTP delivery before class invitations. Published Auth0 free limits and Railway rates are planning references, not verified account entitlements. The extra service adds compute usage; SQLite adds volume/backup usage but no separate database process. Review workspace spend alerts and the impact of hard limits before the hosted test. No Redis, clustered authorization service, enterprise SSO purchase or custom domain purchase is required by this design.
+Use a multi-stage Node image with npm ci --ignore-scripts, TypeScript compilation and production-only dependencies. The app uses pg without a native rebuild and starts directly as the Node user; SessionStart does not start a database. Run real Postgres integration tests in disposable databases matching the selected Railway major; separate those from dependency-free probe/unit tests. Existing npm test and bundled probe discovery must not require a database or Docker. CI explicitly runs the database suite against its Postgres service; Docker image checks remain a separate command.
+
+Review Auth0 entitlements, SMTP delivery, Railway usage alerts and hard-limit impact before invitations/deployment. Postgres adds database RAM/CPU, volume and backup usage; do not quote an unmeasured flat database price or claim current account limits are configured. No Redis, HA database cluster, PgBouncer service, SSO purchase or custom-domain purchase is part of this pilot.
 
 ## 11. Acceptance matrix and evidence
 
@@ -219,10 +231,10 @@ Check Auth0 tenant plan limits and production SMTP delivery before class invitat
 | Same user, two sessions | Section 8's real-client experiment establishes independent approved contexts, or records an explicit blocked result and keeps desktop disabled |
 | Refresh/logout | Real-client refresh behavior observed; expired/revoked refresh fails as configured; local denial rejects still-valid access tokens |
 | Disable/removal | Local disable, membership removal, token/resource block and device revoke deny the next authorized dispatch and terminate affected grants |
-| Concurrency | Concurrent approve/consume/write attempts cannot produce multiple active leases, reuse pairing codes or overlap device writes |
+| Concurrency | Independent Postgres clients cannot create multiple active leases, reuse pairings or overlap writes; lock timeout/deadlock/ambiguous commit and dispatch-vs-revoke tests fail closed without replay |
 | Restart | Enrollment/revocation survives; contexts/leases/pairings die, epochs advance, devices offline; no mutation replay |
-| Storage failure | Missing volume, failed migration, locked/unavailable DB and invalid schema fail closed; no in-memory fallback |
-| Backup restore | Integrity checked; maintenance and new deployment epoch prevent restored grants/credentials/memberships from silently regaining authority |
+| Storage failure | Missing database/schema, incorrect store marker, pool exhaustion, network/owner-connection loss, failed migration and wrong role privileges fail closed; no in-memory fallback |
+| Backup restore | Isolated pg_restore/constraint/role checks pass; maintenance and new deployment epoch prevent restored grants/credentials/memberships from silently regaining authority |
 | Secrets/logs | Captured responses/logs/audit contain no bearer, refresh/device secret, OTP, raw token claims, code, screenshot or scene payload |
 | Existing behavior | Current mock policy tests and dependency-free ping probe remain valid; generated artifacts drift only when their sources change |
 
@@ -234,9 +246,9 @@ Milestone 2 is accepted only when the required identity, durability, revocation 
 
 ## 12. Operator inputs and next artifact
 
-Before live integration, obtain the Auth0 tenant/environment, approved native client registrations, production SMTP sender/provider, two test student emails and explicit course/team roster. Record actual nonsecret issuer/resource/client configuration; keep secrets in their designated stores. Provisioning is not performed as part of writing this spec.
+Before live integration, obtain the Auth0 tenant/environment, approved native client registrations, production SMTP sender/provider, two test student emails, explicit course/team roster and private Postgres database/role/backup configuration. Record actual nonsecret issuer/resource/client configuration; keep secrets in their designated stores. Provisioning is not performed as part of writing this spec.
 
-Review this document before producing the implementation plan. The plan should split delivery into testable slices: reusable verification/metadata, SQLite/enrollment/revocation, Auth0 plus native identity compatibility, same-user context evidence, and restart/restore acceptance. These are design boundaries, not an approval to implement or expose desktop tools.
+Review this document before producing the implementation plan. The plan should split delivery into testable slices: reusable verification/metadata, Postgres/enrollment/revocation, Auth0 plus native identity compatibility, same-user context evidence, and restart/restore acceptance. These are design boundaries, not an approval to implement or expose desktop tools.
 
 ## References checked October 17, 2026
 
@@ -249,6 +261,8 @@ Provider capabilities below inform the integration; concrete tenant/client behav
 - [Auth0 access-token logout limitation](https://support.auth0.com/center/s/article/Invalidate-the-API-token-after-user-logout): already-issued access tokens require explicit resource-server controls for earlier denial.
 - [Auth0 refresh-token issuing-client restriction](https://support.auth0.com/center/s/article/A-Refresh-Token-Must-Be-Revoked-by-Its-Issuing-Client): client-specific token revocation behavior.
 - [Auth0 pricing](https://auth0.com/pricing): account allowances must be checked before provisioning.
-- [Railway volumes](https://docs.railway.com/volumes/reference) and [volume backups](https://docs.railway.com/volumes/backups): persistence, replica/deployment limits and backup behavior.
+- [Railway Postgres](https://docs.railway.com/databases/postgresql), [private networking](https://docs.railway.com/networking/private-networking) and [Postgres backup/restore](https://docs.railway.com/guides/postgres-backups-restores): private database deployment, encrypted inter-service transport and restore options.
+- [node-postgres transactions](https://node-postgres.com/features/transactions), [pooling](https://node-postgres.com/features/pooling) and [TLS](https://node-postgres.com/features/ssl): per-client transaction boundaries and connection handling.
+- [Postgres row/advisory locks](https://www.postgresql.org/docs/17/explicit-locking.html): concurrency and ownership guards.
 - [Railway pricing](https://docs.railway.com/pricing) and [cost controls](https://docs.railway.com/pricing/cost-control): budget planning and account-level limits.
 - [MCP authorization specification](https://modelcontextprotocol.io/specification/latest/basic/authorization): discovery, audience validation and OAuth responsibilities; match implementation to the pinned SDK/client capabilities.
