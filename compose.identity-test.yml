@@ -1,0 +1,20 @@
+# Disposable Postgres 17 compatibility target; hosted Railway major is unprovisioned.
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: mpd_identity_disposable
+      POSTGRES_USER: disposable_admin
+      POSTGRES_PASSWORD: disposable_test_only
+    ports:
+      - '127.0.0.1:55432:5432'
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U disposable_admin -d mpd_identity_disposable']
+      interval: 1s
+      timeout: 3s
+      retries: 30
+# After startup, explicitly mark this disposable instance before running tests:
+# docker compose -p mpd-m2-tests -f compose.identity-test.yml exec -T postgres psql -U disposable_admin -d mpd_identity_disposable -c "COMMENT ON DATABASE mpd_identity_disposable IS 'mpd_identity_disposable_test_only'"
+# PG_TEST_DISPOSABLE=true PG_TEST_ADMIN_URL=postgresql://disposable_admin:disposable_test_only@127.0.0.1:55432/mpd_identity_disposable PG_TEST_DATABASE_URL=postgresql://disposable_admin:disposable_test_only@127.0.0.1:55432/mpd_identity_disposable node --import tsx --test --test-concurrency=1 test/database/*.test.ts
