@@ -49,9 +49,45 @@ export async function openAuthorizationStore(options: OpenStoreOptions): Promise
   let closed = false;
   let shuttingDown: Promise<void> | undefined;
   let ownerProbe: Promise<void> | undefined;
+  let ownerUsable=false;
+  const checkedOut=new Set<pg.PoolClient>();
+  const requestClients=new Set<pg.PoolClient>();
+  const retired=new WeakSet<pg.PoolClient>();
+  const backendPids=new WeakMap<pg.PoolClient,number>();
+  const clientEnds=new WeakMap<pg.PoolClient,Promise<void>>();
   const listeners = new Set<()=>void>();
+  function releaseClient(client:pg.PoolClient,destroy=false):void {
+    if (!checkedOut.delete(client)) return;
+    if (destroy) retired.add(client);
+    client.release(destroy);
+  }
   function shutdown(): Promise<void> {
-    if (!shuttingDown) shuttingDown=pool.end().catch(()=>{}).then(()=>owner.end()).catch(()=>{});
+    if (!shuttingDown) shuttingDown=Promise.resolve().then(async()=>{
+      // Stop borrowing first. Callback completion is not a shutdown prerequisite.
+      const ending=pool.end();
+      const clients=[...requestClients];
+      const pids=clients.flatMap(client=>backendPids.has(client)?[backendPids.get(client)!]:[]);
+      for (const client of [...checkedOut]) releaseClient(client,true);
+      for (const client of clients) client.connection.stream.destroy();
+      try {
+        // A local socket closing need not immediately interrupt server-side SQL.
+        // This owner can terminate only the captured sessions of its own app role.
+        if (ownerUsable && pids.length) {
+          await ownerProbe?.catch(()=>{});
+          if (ownerUsable) await owner.query(`SELECT pg_terminate_backend(pid,1000) FROM pg_stat_activity
+            WHERE pid=ANY($1::integer[]) AND usename=current_user AND datname=current_database()
+              AND application_name='mpd_identity_request_connection'`,[pids]);
+        }
+      } catch { /* Lost database/owner connectivity already denies all authority. */ }
+      finally {
+        await ending;
+        await Promise.all(clients.map(client=>clientEnds.get(client)));
+        // Includes bounded in-progress connects that finished after shutdown began.
+        for (const client of requestClients) client.connection.stream.destroy();
+        owner.connection.stream.destroy();
+        await owner.end();
+      }
+    }).catch(()=>{});
     return shuttingDown;
   }
   function loseAuthority(): void {
@@ -60,32 +96,46 @@ export async function openAuthorizationStore(options: OpenStoreOptions): Promise
     for (const listener of listeners) { try { listener(); } catch { /* Subscribers cannot restore authority. */ } }
     void shutdown();
   }
-  owner.on('error',loseAuthority);
-  owner.on('end',()=>{ if (!closed) loseAuthority(); });
+  owner.on('error',()=>{ ownerUsable=false; loseAuthority(); });
+  owner.on('end',()=>{ ownerUsable=false; if (!closed) loseAuthority(); });
   pool.on('error',loseAuthority);
   // pg forwards idle failures to Pool; checked-out clients also need a listener.
-  pool.on('connect',(client)=>{ client.on('error',loseAuthority); });
+  pool.on('connect',(client)=>{
+    requestClients.add(client);
+    clientEnds.set(client,new Promise<void>(resolve=>client.once('end',()=>{ requestClients.delete(client); resolve(); })));
+    client.on('error',loseAuthority);
+  });
   function assertAvailable(): void { if (!available || closed) throw new Error('STORE_UNAVAILABLE'); }
   async function transaction<T>(action:(client:Transaction)=>Promise<T>): Promise<T> {
     assertAvailable();
     let client: pg.PoolClient | undefined;
     let began = false;
     let destroy = false;
+    let leaseActive=true;
     try {
-      client=await pool.connect(); assertAvailable();
+      client=await pool.connect(); checkedOut.add(client);
+      if (!available || closed) { releaseClient(client,true); client.connection.stream.destroy(); }
+      assertAvailable();
+      if (!backendPids.has(client)) backendPids.set(client,(await client.query('SELECT pg_backend_pid() AS pid')).rows[0].pid);
       await client.query('BEGIN'); began=true;
-      const result=await action(client); assertAvailable();
+      const requestClient=client;
+      const transaction:Transaction=Object.freeze({query:((...args:unknown[])=>{
+        assertAvailable();
+        if (!leaseActive || retired.has(requestClient)) throw new Error('STORE_UNAVAILABLE');
+        return Reflect.apply(requestClient.query,requestClient,args);
+      }) as Transaction['query']});
+      const result=await action(transaction); assertAvailable();
       await client.query('COMMIT'); began=false; assertAvailable();
       return result;
     } catch(error) {
       if (connectionFailure(error)) { destroy=true; loseAuthority(); }
-      if (client && began) { try { await client.query('ROLLBACK'); } catch { destroy=true; loseAuthority(); } }
+      if (client && began && !retired.has(client)) { try { await client.query('ROLLBACK'); } catch { destroy=true; loseAuthority(); } }
       if (!available) throw new Error('STORE_UNAVAILABLE',{cause:error});
       throw error;
-    } finally { client?.release(destroy); }
+    } finally { leaseActive=false; if (client) releaseClient(client,destroy); }
   }
   try {
-    await owner.connect();
+    await owner.connect(); ownerUsable=true;
     await validateSchema(owner,options.expectedStoreId);
     await validateRuntimeRole(owner);
     const ownership=await owner.query('SELECT pg_try_advisory_lock($1,$2) AS acquired',[LOCK_NAMESPACE,OWNER_LOCK]);

@@ -34,6 +34,10 @@ export async function revokeAuthorization(store: Store, command: RevocationComma
         if (userId && !users.rows.some(row => row.id === userId)) throw new PolicyError('USER_NOT_FOUND');
         const teamId = command.kind === 'remove-membership' ? command.teamId : null;
         await tx.query('SELECT id FROM mpd_identity.memberships WHERE user_id=ANY($1::uuid[]) AND ($2::uuid IS NULL OR team_id=$2) ORDER BY id FOR UPDATE', [ids, teamId]);
+        if (command.kind === 'remove-membership') {
+          // Pending invitations can create a membership on first login; remove that authority too.
+          await tx.query("SELECT id FROM mpd_identity.invitations WHERE user_id=$1 AND team_id=$2 AND status='pending' ORDER BY id FOR UPDATE", [command.userId, command.teamId]);
+        }
         await tx.query('SELECT id FROM mpd_identity.devices WHERE owner_id=ANY($1::uuid[]) ORDER BY id FOR UPDATE', [ids]);
         const resource = command.kind === 'block-resource' || command.kind === 'deny-token' ? command.resource ?? null : null;
         let effectiveTokenResource = resource;
@@ -53,7 +57,8 @@ export async function revokeAuthorization(store: Store, command: RevocationComma
           case 'disable-user':
             await tx.query("UPDATE mpd_identity.users SET status='disabled',authorization_version=authorization_version+1,updated_at=$2 WHERE id=$1", [command.userId, now]); break;
           case 'remove-membership':
-            await tx.query("UPDATE mpd_identity.memberships SET status='removed',version=version+1,updated_at=$3 WHERE user_id=$1 AND team_id=$2 AND status<>'removed'", [command.userId, command.teamId, now]); break;
+            await tx.query("UPDATE mpd_identity.memberships SET status='removed',version=version+1,updated_at=$3 WHERE user_id=$1 AND team_id=$2 AND status<>'removed'", [command.userId, command.teamId, now]);
+            await tx.query("UPDATE mpd_identity.invitations SET status='revoked' WHERE user_id=$1 AND team_id=$2 AND status='pending'", [command.userId, command.teamId]); break;
           case 'block-resource':
             await tx.query('INSERT INTO mpd_identity.user_resource_blocks(user_id,resource,reason,created_at) VALUES ($1,$2,$3,$4) ON CONFLICT(user_id,resource) DO UPDATE SET reason=EXCLUDED.reason', [command.userId, command.resource, command.reason, now]); break;
           case 'revoke-device':

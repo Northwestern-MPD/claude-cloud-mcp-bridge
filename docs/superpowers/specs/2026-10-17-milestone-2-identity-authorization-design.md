@@ -1,7 +1,7 @@
 # Milestone 2: reusable class MCP identity and durable authorization
 
 Date: October 17, 2026 (America/Chicago)
-Status: design approved October 17, 2026; implementation in progress October 18. Reusable authentication, identity HTTP, durable Postgres policy and recovery are implemented locally. Auth0 development email delivery reached both authorized test inboxes. Railway services are staged only. Native OAuth/same-user context verification and production email readiness remain pending; full milestone acceptance is blocked. See [verification evidence](../../IDENTITY_VERIFICATION.md).
+Status: design approved October 17, 2026; local implementation verified October 18. Reusable authentication, identity HTTP, durable Postgres policy and recovery are implemented locally. Auth0 development email delivery reached both authorized test inboxes. Railway services are staged only. Native OAuth/same-user context verification and production email readiness remain pending; full milestone acceptance is blocked. See [verification evidence](../../IDENTITY_VERIFICATION.md).
 
 ## 1. Intent and accepted decisions
 
@@ -248,7 +248,7 @@ Review Auth0 entitlements, SMTP delivery, Railway usage alerts and hard-limit im
 | Storage failure | Missing database/schema, incorrect store marker, pool exhaustion, network/owner-connection loss, failed migration and wrong role privileges fail closed; no in-memory fallback | Local tests pass |
 | Backup restore | Isolated pg_restore/constraint/role checks pass; maintenance, new epoch, monotonic issuance cutoff and current revocation manifest prevent authority resurrection after reconciliation/reopened admission; unknown revocation state stays denied | Isolated Postgres 17 dump/restore pass; hosted backup entitlement/procedure pending |
 | Secrets/logs | Captured responses/logs/audit contain no bearer, refresh/device secret, OTP, raw token claims, code, screenshot or scene payload | Local tests pass |
-| Existing behavior | Current mock policy tests and dependency-free ping probe remain valid; generated artifacts drift only when their sources change | Local regression checks pass; final integration in progress |
+| Existing behavior | Current mock policy tests and dependency-free ping probe remain valid; generated artifacts drift only when their sources change | 370 tests, 11 container checks, build/demo and artifact checks pass |
 
 Start implementation with meaningful failing tests for the selected slice. Run existing tests, typecheck and build as appropriate to the changed components; verify probe regeneration drift when probe dependencies/sources change. Version exact new dependencies before installation and commit lockfile changes. A documentation review does not require rerunning application tests.
 
