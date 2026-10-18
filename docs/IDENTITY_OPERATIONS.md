@@ -57,6 +57,8 @@ The new `class-identity` service uses API/dashboard configuration. Railway depre
 
 ## Daily database backups and portable export
 
+An explicitly approved one-time local age-encrypted export of the current hosted schema has been created and decrypted/catalogue-checked; see [the verification record](IDENTITY_VERIFICATION.md). It used only the backup role and streamed without plaintext disk staging. Preserve the protected encrypted archive and separately protected decryption identity. No restore drill, offsite copy or automated schedule is established by that export; do not create another sensitive export without the required payload/destination authorization.
+
 The current workspace rejected DAILY backup configuration with a Pro-only entitlement error; leave hosted acceptance blocked until the operator selects an upgrade or a reviewed alternative. Do not upgrade the workspace automatically. Once available, enable daily backups on the **database service**, then record the actual Railway schedule, plan entitlement, retention, encryption/access policy and measured cost. Keep platform backup retention distinct from application row retention. PITR is optional after its availability, cost and restore drill are observed. Retain the original database for rollback; backup/restore authorization does not authorize deleting it.
 
 Use PostgreSQL17 tools for the local selected major; confirm the hosted major and match its tools before a hosted operation. A developer's older psql/pg_dump installation is not an acceptable substitute. Production tools run in an approved operator environment or authenticated database shell, not the identity request-serving image.

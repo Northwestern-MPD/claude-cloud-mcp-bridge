@@ -22,6 +22,8 @@ The tenant already reports `resource_parameter_profile=compatibility` and `autho
 
 Claude Code cloud inherits configured claude.ai connectors and their proxy authorization; it does not perform the terminal client's loopback OAuth flow. Record this delivery path explicitly during native acceptance. The current project probe entries remain available. [Cloud connector delivery](https://code.claude.com/docs/en/mcp#how-connectors-reach-claude-code).
 
+Passwordless New Universal Login also requires **Identifier First**. Configure `PATCH /api/v2/prompts` with `{"identifier_first":true}`, and re-fetch to verify it alongside `universal_login_experience=new`. The first real Claude attempt reached the correct client/callback/resource/S256 request but failed with `no connections enabled for the client` while this setting was unset. After enabling it, the same diagnostic request reached `/u/login/identifier` with an email input and no connection error. This entry-form check is not proof of email verification, token exchange or native MCP success. [Auth0 passwordless login-profile requirement](https://support.auth0.com/center/s/article/no-connections-enabled-for-the-client).
+
 Auth0's current API enables a client through `PATCH /api/v2/connections/{id}/clients` with `[{"client_id":"...","status":true}]`. The older `enabled_clients` property on connection PATCH was rejected. Re-fetch the client list through that same `/clients` endpoint and separately verify `disable_signup`; do not infer success from the CLI wrapper's exit status alone.
 
 ## Reuse across class MCP servers

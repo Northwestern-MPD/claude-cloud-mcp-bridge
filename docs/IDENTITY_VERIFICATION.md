@@ -1,6 +1,6 @@
 # Milestone 2 verification record
 
-Status: **local implementation verified; full milestone acceptance blocked**. Native gate: `IDENTITY_NATIVE_BLOCKED` pending identity app deployment and actual cloud OAuth checks. Local evidence does not establish native Claude OAuth or separation between simultaneous cloud sessions. Public desktop tools remain disabled.
+Status: **local implementation and identity-only hosted release verified; full milestone acceptance blocked**. Native gate: `IDENTITY_NATIVE_BLOCKED` pending completed cloud OAuth, authenticated native identity and session/refresh checks. Local evidence does not establish native Claude OAuth or separation between simultaneous cloud sessions. Public desktop tools remain disabled.
 
 ## Auth0 development evidence
 
@@ -22,6 +22,14 @@ Both official CLI sign-ins were renewed successfully. Auth0 API `6ad5153e0cbf88b
 Static public Claude client `OUmVGrnlfsCIzS8JG55tBhZIgPKBTCeu` uses token endpoint authentication `none`, Authorization Code/refresh grants and callback `https://claude.ai/api/mcp/auth_callback`. Rotating refresh tokens have 7-day idle/30-day maximum expiration and zero overlap. The email connection now enables this client plus the development client; signups remain disabled and brute-force protection enabled. API/client/connection settings were re-fetched. The tenant already had resource compatibility and authorization-response issuer support enabled; CIMD stays disabled. See [Auth0 setup](AUTH0_SETUP.md) for the documented static public-client delivery path and observed API correction.
 
 No hosted token exchange, signed claim result, refresh compatibility or native identity invocation is established by these configuration writes.
+
+### First native connector authorization attempt and fix
+
+The operator reported Claude authorization failure reference `ofid_a445136ad6b9bc05`. Auth0 events for this exact public client at 19:34–19:35 UTC showed `invalid_request` / `no connections enabled for the client`. Their nonsecret request fields confirmed the configured callback, exact resource, `identity:read offline_access`, Authorization Code and S256 PKCE; this established that Claude reached the expected provider/client. The opaque Claude reference was not directly mapped to an Auth0 log identifier.
+
+Email was the only enabled connection, but New Universal Login had `identifier_first` unset. Auth0 documents this profile combination as unsupported for passwordless email. A fresh diagnostic request using the observed OAuth parameters reproduced the callback error before mutation. The operator changed only `prompts.identifier_first` to true and re-fetched the setting. The same request then returned 200 at `/u/login/identifier` with an email input and without the prior connection error. No real email, code or token was submitted by this diagnostic check. Raw provider events, temporary state/verifier and HTML remain in protected operator records. [Auth0 documented cause and requirement](https://support.auth0.com/center/s/article/no-connections-enabled-for-the-client).
+
+The operator has been asked to retry the existing connector, complete email verification and report an actual native `class_identity` result. Full hosted OAuth/native acceptance remains pending; the login-form check does not establish token claims, refresh or native discovery.
 
 ## Local implementation evidence
 
@@ -80,7 +88,11 @@ Remote operator runtimes and temporary roster/command files were removed. The ke
 
 ### Hosted backup entitlement and usage
 
-The actual volume instance is `7a116fb2-7202-4404-bf3d-d0528a033f04`, with observed usage 133.824512 MB on its 5000 MB volume. Its backup schedule list is empty. The approved attempt to enable DAILY backups was rejected by Railway: **"Manual backups and backup schedules are only available for Pro workspaces"**. Re-fetch confirmed no schedule was created. No subscription upgrade, PITR or alternate paid storage was enabled. Hosted backup acceptance remains blocked pending an operator-selected plan or reviewed backup approach. A one-time local age-encrypted export was prepared as a possible pilot alternative, but automatic approval review rejected exporting private database contents without specific payload/destination authorization. **No export or archive was created.** A checksum-verified temporary age 1.3.2 tool and protected local encryption identity are prepared; do not claim a local, offsite, scheduled or tested restore backup exists.
+The actual volume instance is `7a116fb2-7202-4404-bf3d-d0528a033f04`, with observed usage 133.824512 MB on its 5000 MB volume. Its backup schedule list is empty. The approved attempt to enable DAILY backups was rejected by Railway: **"Manual backups and backup schedules are only available for Pro workspaces"**. Re-fetch confirmed no schedule was created. No subscription upgrade, PITR or alternate paid storage was enabled. The operator subsequently explicitly approved a one-time export of only `mpd_identity` to a local age-encrypted archive, resolving the automatic-review block on that payload/destination. The approved archive now exists in protected ignored `work/identity-operator/backups/identity-pilot-20261018.dump.age`: 40,794 ciphertext bytes, SHA256 `0d61923de16bfe4a2bbbc413a23f1d2018f6b0ef3df6bd8e2d5c52d47ab782f5`. The decryption identity is separately protected under `backup-identities/`; do not copy it into Git, logs or chat.
+
+The export ran as SELECT-only `mpd_identity_backup`, using PostgreSQL 17.11 `pg_dump` custom format, schema `mpd_identity`, no-owner and no-privileges. SSH streamed directly into checksum-verified age 1.3.2 encryption; no plaintext archive was written to disk. The decrypted stream was sent to matching 17.11 `pg_restore --list`: 85 catalogue entries, including 17 table-data entries. Parent verification independently checked ciphertext hash, successful authenticated decryption, custom-format magic, catalogue counts and 0700-directory/0600-file permissions. Expected store identity matched. Snapshot aggregate counts included two users/two identities/two invitations and no active memberships/devices/leases; no raw records entered repository evidence.
+
+The backup worker's first preflight used a default database name that did not exist and stopped before any dump. Its key was revoked. The corrected single export used the independently observed `identity` database; its temporary workspace key was also revoked in cleanup, and an exhaustive key list plus the parent's CLI check showed none remain. No database restore or write was performed by the export/check. **This is one local encrypted snapshot, not scheduled/offsite protection or a completed restore drill.** Platform daily backups, operational retention and full hosted recovery acceptance remain pending.
 
 Railway's usage API reported current-period resource usage `$0.007874182515617285` at the October 18 check and no workspace usage limit. The billing period is October 17–November 17. This is an early usage snapshot taken before the identity app started, not a monthly operating-cost estimate. A separate `$5` agent-tooling limit exists and is not a workload spending cap. No spending cap was changed. [Railway backup schedules and incremental volume pricing](https://docs.railway.com/volumes/backups).
 
@@ -92,7 +104,7 @@ The identity job at `82b9cc7` hung after its first application lifecycle test an
 
 ## Outstanding acceptance gates
 
-1. Select/authorize a functioning backup approach and complete hosted export/restore verification and workload cost controls. The identity release, roles/schema and readiness checks above passed.
+1. Complete a hosted restore/recovery drill, ongoing backup/retention approach and workload cost controls. The identity release, roles/schema, readiness and approved one-time encrypted export checks above passed.
 2. Verify the configured native OAuth registration/resource behavior with two real verified accounts, signed token claims, refresh/reuse/logout/reconnect and immediate local revocation.
 3. Simultaneous native cloud sessions for the same user, including copied-token/handle attacks. Until an integrity-protected work-session mechanism is established, full milestone acceptance and desktop authority stay blocked.
 4. Production mail provider or a reviewed onboarding change before class rollout; built-in development delivery is not production readiness.
