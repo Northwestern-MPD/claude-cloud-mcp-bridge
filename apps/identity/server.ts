@@ -90,8 +90,11 @@ export async function startIdentityServer(options: {
     res.once('close', () => clearTimeout(timer));
     res.once('finish', () => clearTimeout(timer));
     try {
-      if (req.headers.host !== external.host || (req.headers.origin && !config.allowedOrigins.includes(req.headers.origin)) || req.headers.forwarded || (req.headers['x-forwarded-host'] && req.headers['x-forwarded-host'] !== external.host) || (req.headers['x-forwarded-proto'] && req.headers['x-forwarded-proto'] !== external.protocol.slice(0, -1))) throw new HttpError(403, 'ORIGIN_REJECTED');
       const path = req.url;
+      // Railway probes this fixed hostname. It is a liveness exception only,
+      // never an alternate resource host or trusted proxy for protected routes.
+      const railwayHealth = req.method === 'GET' && path === '/health' && req.headers.host === 'healthcheck.railway.app' && !req.headers.origin && !req.headers.forwarded && !req.headers['x-forwarded-host'] && !req.headers['x-forwarded-proto'];
+      if (!railwayHealth && (req.headers.host !== external.host || (req.headers.origin && !config.allowedOrigins.includes(req.headers.origin)) || req.headers.forwarded || (req.headers['x-forwarded-host'] && req.headers['x-forwarded-host'] !== external.host) || (req.headers['x-forwarded-proto'] && req.headers['x-forwarded-proto'] !== external.protocol.slice(0, -1)))) throw new HttpError(403, 'ORIGIN_REJECTED');
       if (req.method === 'GET' && path === '/health') return send(200, { status: 'ok' });
       if (req.method === 'GET' && path === metadataPath(config.auth.resource)) return send(200, protectedResourceMetadata(config.auth));
       if (req.method === 'GET' && path === '/ready') {

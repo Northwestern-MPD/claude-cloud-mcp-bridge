@@ -142,3 +142,7 @@ Run `{kind:"retention"}` through the private admin path. Each transaction handle
 - Invitation email is redacted to an empty value only after the course's explicit closed_at timestamp plus30days. A disabled course without an approved close timestamp and an open course do not qualify. Repeating close-course preserves its first timestamp. Stable subject/provenance IDs required for enforcement and foreign keys remain.
 
 Application retention does not erase historical copies in encrypted dumps, platform snapshots or protected operator evidence. Apply their separate approved retention/access policy and record actual platform retention. Retention reports contain counts only, not emails, tokens or deleted row payloads.
+
+### Railway deployment prober
+
+Railway sends deployment health checks with `Host: healthcheck.railway.app`. The identity server accepts that exact host only for a plain `GET /health` without Origin or forwarded-host/protocol headers. It does not admit that host for `/ready`, discovery, MCP, or any other method. The configured public resource host and normal origin/proxy checks remain required for protected traffic. The local HTTP regression exercises this exact prober request under maintenance and verifies that all other routes remain denied. See [Railway health-check hostname](https://docs.railway.com/deployments/healthchecks#healthcheck-hostname).
