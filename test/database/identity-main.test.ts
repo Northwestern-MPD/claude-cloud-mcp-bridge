@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { createServer, request } from 'node:http';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { chmod, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -46,14 +46,17 @@ test('actual identity application opens its private admin socket and honors main
   assert.equal(await health(port), 200);
 });
 
-test('application startup failure after store acquisition releases ownership and the HTTP listener', async t => {
+test('application startup failure after store acquisition releases ownership and the HTTP listener', { timeout: 10_000 }, async t => {
   const db = await createTestDatabase(); const dir = await mkdtemp(join(tmpdir(), 'identity-main-refusal-'));
   let app: Awaited<ReturnType<typeof startIdentityApplication>> | undefined;
   t.after(async () => { await app?.close(); await db.close(); await rm(dir, { recursive: true, force: true }); });
   await db.provisionRoles(); const storeId = randomUUID(), epoch = 'application-test', port = await freePort();
   await migrateAuthorizationStore({ migrationUrl: db.migrationUrl, transportMode: 'local-test', initialize: true, maintenance: true, expectedStoreId: storeId, deploymentEpoch: epoch });
-  const env = { AUTH0_ISSUER: 'https://issuer.example/', AUTH0_JWKS_URI: 'https://issuer.example/jwks', AUTH0_ALLOWED_CLIENT_IDS: 'native-test', MCP_RESOURCE_URI: 'https://bridge.example/mcp', MCP_EXTERNAL_ORIGIN: 'https://bridge.example', DATABASE_URL: db.appUrl, DB_TRANSPORT_MODE: 'local-test', AUTHZ_STORE_ID: storeId, AUTHZ_DEPLOY_EPOCH: epoch, AUTHZ_TOKEN_IAT_AFTER: '0', AUTHZ_MAINTENANCE: 'false', AUTHZ_ADMIN_SOCKET: '/proc/no-permission/admin.sock', HOST: '127.0.0.1', PORT: String(port) };
-  await assert.rejects(startIdentityApplication(env));
+  // An owned insecure directory fails consistently on Linux and macOS. Recursive
+  // mkdir below /proc can remain pending on Linux before startup can reject.
+  await chmod(dir, 0o755);
+  const env = { AUTH0_ISSUER: 'https://issuer.example/', AUTH0_JWKS_URI: 'https://issuer.example/jwks', AUTH0_ALLOWED_CLIENT_IDS: 'native-test', MCP_RESOURCE_URI: 'https://bridge.example/mcp', MCP_EXTERNAL_ORIGIN: 'https://bridge.example', DATABASE_URL: db.appUrl, DB_TRANSPORT_MODE: 'local-test', AUTHZ_STORE_ID: storeId, AUTHZ_DEPLOY_EPOCH: epoch, AUTHZ_TOKEN_IAT_AFTER: '0', AUTHZ_MAINTENANCE: 'false', AUTHZ_ADMIN_SOCKET: join(dir, 'refused.sock'), HOST: '127.0.0.1', PORT: String(port) };
+  await assert.rejects(startIdentityApplication(env), /INSECURE_ADMIN_DIRECTORY/);
   await assert.rejects(health(port));
   app = await startIdentityApplication({ ...env, AUTHZ_ADMIN_SOCKET: join(dir, 'private/admin.sock') });
   assert.equal(await health(port), 503);
