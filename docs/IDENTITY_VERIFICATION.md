@@ -1,6 +1,6 @@
 # Milestone 2 verification record
 
-Status: **local implementation and identity-only hosted release verified; full milestone acceptance blocked**. Native gate remains `IDENTITY_NATIVE_BLOCKED` pending refresh/revocation and session checks. Both authorized accounts completed operator-reported native identity calls with distinct users/teams and the same course. Local evidence does not establish native Claude OAuth or separation between simultaneous cloud sessions. Public desktop tools remain disabled.
+Status: **local implementation and identity-only hosted release verified; full milestone acceptance blocked**. Native gate remains `IDENTITY_NATIVE_BLOCKED` pending revocation and session checks; account A refresh passed. Both authorized accounts completed operator-reported native identity calls with distinct users/teams and the same course. Local evidence does not establish native Claude OAuth or separation between simultaneous cloud sessions. Public desktop tools remain disabled.
 
 ## Auth0 development evidence
 
@@ -42,6 +42,16 @@ The full reported result, including the internal user UUID, is retained only in 
 In reply to the private-window reconnect and fresh native cloud call request, the operator reported another successful `class_identity` result. It matched the exact resource and account B’s invited team, returned the same course as account A, a different internal user and team, and desktop access disabled. Comparison against the protected deployment state and account A evidence passed. The full result is retained only in protected `native-account-b-result.json`; no credentials were requested. Exact native server identifier, client version and cloud-session commit were not supplied.
 
 The two-account native identity check has passed on operator-reported evidence. Refresh/revocation and same-user simultaneous-session isolation remain pending; these results do not enable desktop authority or complete the milestone.
+
+### Native refresh — account A
+
+The operator reported another successful native `class_identity` call with the same account A user, course and team and desktop access disabled. Auth0 recorded account A login/code exchange at 20:02:52/53 UTC, followed by `sertft` (successful refresh-token exchange) at **20:15:14.981 UTC**, more than 12 minutes later and beyond the configured 600-second access-token lifetime. This establishes successful provider refresh for the configured native connector alongside a matching operator-reported identity call. Exact timestamps and results are retained in protected operator evidence; no raw tokens were collected.
+
+The operator clarified that they logged out of account B and requested that subsequent checks use A. The earlier B result remains valid two-account evidence; this repeat is an A refresh check, not evidence that a B cloud session preserved its former identity across a connector account switch. The reply did not separately state whether a sign-in prompt appeared. Refresh-token reuse/revocation, logout/reconnect and immediate local denial remain unverified.
+
+A read-only preflight for scoped refresh revocation returned `insufficient_scope` for `read:grants`. Official CLI authorization requesting additional read/delete-grant scopes is pending. No grant or refresh token has been revoked yet. Target only A’s exact client/resource grant; never use tenant-wide or user-wide deletion as a shortcut.
+
+Private-observation limitation: the serving identity request computes a fingerprint in memory, but does not persist/expose private native request observations with fingerprint/expiry. Consequently the current release cannot prove that an identical still-valid JWT was denied after local revocation, or establish copied-token/handle equality across native chats. Do not extract Claude-held credentials or add public diagnostic tools to fill this gap. Production remains `SESSION_ISOLATION_UNPROVEN`; a reviewed private observation change is needed for the stronger evidence.
 
 ### Reported hosted-login UX and latency
 
