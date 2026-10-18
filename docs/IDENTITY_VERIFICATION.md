@@ -40,27 +40,49 @@ A fresh Astra subagent reviewed the implementation through `96d9a98` and the Rai
 
 The reviewer accepted the narrow Railway `GET /health` hostname exception. Its explicitly deferred native, production mail, hosted backup/cost and later desktop experiments remain outstanding below. No second review was requested; the fixes have focused RED/GREEN evidence, author inspection and the fresh whole-suite/container verification above.
 
-## Railway rollout — October 18, 2026
+## Railway identity deployment — October 18, 2026
 
-The operator explicitly approved pushing main and deploying the public identity-only pilot. Main was pushed through `82b9cc7`, followed by the CI fixture correction `4d789b2`. The existing compatibility probe deployment remains unchanged.
+The approved identity-only pilot is **deployed and ready** at `https://class-identity-production.up.railway.app/mcp`. Public desktop capabilities remain disabled. Native Claude OAuth/token results and full milestone acceptance are still pending.
 
 Project `e759a352-01af-4dd6-994d-662f809d7478`, production environment `bd25f4b4-0fa5-4eaf-9a1d-d3490edddebd`:
 
-- Approved patch `8409e706-8682-4f46-a5f9-fcef695ef3dc` was applied.
-- `Postgres`: service `7dc54ec7-71c3-4f33-bf2d-7f5da9f49be5`, deployment `35f201bc-1e01-403f-adaa-4a1b0cddde03` reports `SUCCESS`. Image is pinned to `ghcr.io/railwayapp-templates/postgres-ssl:17`, database configuration is `identity`, and volume `4fad8e5d-ba96-4113-b622-475efd21c3c7` is mounted at `/var/lib/postgresql/data` (5000 MB). No public domain or TCP proxy exists. Actual SQL version, separate role provisioning and initial schema validation remain pending private operator access.
-- `class-identity`: service `947ffd02-0ac5-42fb-9e95-179437cd12c9` exists with reserved public domain `class-identity-production.up.railway.app` targeting port 8080. Its exact resource will be `https://class-identity-production.up.railway.app/mcp`. It has **no app deployment, source, variables or volume** yet.
-- Both services have one replica in `iad`, with configured limits of 1 vCPU and 500,000,000 bytes memory per container. These limits do not establish measured spend or a workspace spending cap.
-- The identity service has explicit API/dashboard configuration for `Dockerfile.identity`, `node dist/apps/identity/main.js`, `/health`, 60-second health timeout, 30-second drain and zero overlap. Railway rejects `railwayConfigFile` for new services: legacy JSON/TOML Config as Code is deprecated. The checked-in identity JSON is not consumed by this new service. [Railway configuration transition](https://docs.railway.com/infrastructure-as-code).
+- Private `Postgres` service `7dc54ec7-71c3-4f33-bf2d-7f5da9f49be5`, deployment `35f201bc-1e01-403f-adaa-4a1b0cddde03`, reports SUCCESS. Actual SQL version is **17.11** (`170011`), database `identity`; image remains `ghcr.io/railwayapp-templates/postgres-ssl:17`. Volume `4fad8e5d-ba96-4113-b622-475efd21c3c7` mounts at `/var/lib/postgresql/data`. No public database domain or TCP proxy exists.
+- `class-identity` service `947ffd02-0ac5-42fb-9e95-179437cd12c9`, successful deployment `f7c87ab7-57ad-40bf-b1fb-737b93be8e9a`, is pinned to reviewed commit `355ba952341ad1fa374028ed12476420e32624cc`; later pushes do not auto-deploy. [Release CI 39156401352 passed](https://github.com/Northwestern-MPD/claude-cloud-mcp-bridge/actions/runs/39156401352). There is no app volume. Domain `class-identity-production.up.railway.app` targets 8080.
+- Both services retain one replica in `iad`, with configured 1 vCPU/500,000,000-byte container limits. The serving identity process is PID 1, UID 1000, Node 22.23.3. Authenticated SSH shells use root; that is separate from the serving process.
+- The first identity attempt `65acc3ee-7e7d-4639-b38c-a83a80b4c9bd` failed because Railway built the root probe Dockerfile despite `Dockerfile.identity` being present in its service manifest. Its missing-entrypoint failure acquired no database owner/request connection. The documented `RAILWAY_DOCKERFILE_PATH=Dockerfile.identity` variable corrected the build; an explicit source rebuild produced the successful deployment above. Preserve that variable. No application authentication rule was weakened. [Railway Dockerfile override](https://docs.railway.com/builds/dockerfiles#custom-dockerfile-path).
+- New services reject legacy `railwayConfigFile`; this service uses API/dashboard settings plus the Dockerfile override. Its explicit start command is `node dist/apps/identity/main.js`, health path `/health`, 60-second health timeout, 30-second drain and zero overlap. The existing probe's legacy configuration and deployment remain unchanged. [Railway configuration transition](https://docs.railway.com/infrastructure-as-code).
 
-Official Railway CLI 5.70.0 was downloaded through `gh` and its release SHA256 verified. Both Railway and Auth0 CLI sign-ins now succeed. Private database shell access requires a registered SSH key; the account has none. Automatic approval review rejected registering a persistent personal key because its account-wide access was not specifically authorized. A dedicated Ed25519 key is prepared locally in ignored `work/identity-operator/` (directory 0700/private file 0600); it has **not** been registered. Request explicit approval for temporary workspace-wide registration, use it only for this project, and remove its Railway registration after pilot setup. No password, private key or token was copied into Git or chat.
+### Private initialization and enrollment
 
-Next: obtain explicit approval for the temporary SSH access change; initialize and validate separate database roles/schema through the protected operator path; attach a reviewed commit with autodeploy disabled; configure only app-role credentials in the serving process. Keep maintenance enabled until operator checks pass. All future releases and rollbacks require explicit drain/stop/owner-lock release/start.
+Through the approved temporary workspace SSH key, a checksum-verified Node 22.23.3 operator runtime ran the reviewed role/bootstrap, migration and integrity code inside the authenticated private database shell. Production dependencies were lockfile-pinned with zero audit findings. Roles have independent random passwords; the owner is NOLOGIN, the migrator alone can SET ROLE owner, the app has limited DML/selected state-column updates, and backup is SELECT-only.
+
+Actual integrity validation passed: schema 2, 17 tables, 73 constraints, eight invariants and four roles. The app role opened the store and correctly reported unready under maintenance. Store UUID is `f9ec2176-3bd8-41b4-971b-ed46efec6a93`; epoch is `pilot-20261018-770e9a393d30`; initial external token cutoff is 0. These external values remain in protected operator configuration and Railway settings across releases/rollback.
+
+The serving environment was separately inspected: DATABASE_URL uses only `mpd_identity_app` on `postgres.railway.internal`; no migration, backup, SMTP or Auth0 management variables are present. The private admin directory/socket are owned by node with 0700/0600 modes. The operator imported two explicitly authorized exact-subject invitations into separate pilot teams using the live socket. No additional invitation email was sent. Invitations expire six days after import; at the enrollment check both were pending and no active membership existed. Real verified login must activate membership.
+
+Stored maintenance was cleared through that same socket only after schema, role, metadata and denial checks. The external maintenance setting is false; the stored setting initially provided the admission block. Observed connection counts were one dedicated owner and one pooled request connection; the configured pool maximum remains five.
+
+### Hosted HTTPS checks
+
+- `/health`: 200 throughout maintenance and after release.
+- `/ready`: 503 under maintenance, 200 after the private release command.
+- `/.well-known/oauth-protected-resource/mcp`: 200, exact resource URI, canonical Auth0 issuer, `identity:read`, bearer header method. The resource-specific `/mcp` suffix is required.
+- POST `/mcp`: 503 while maintenance was active; after release, missing and deliberately invalid bearers both returned 401 with the exact `resource_metadata` challenge URL.
+- Unapproved Origin returned 403. The existing compatibility probe still returned 200 and its fixed no-desktop result.
+
+These are direct HTTPS/operator checks, **not authenticated/native MCP evidence**. No minted JWT, native `class_identity`, refresh or same-user session result has been observed yet.
+
+### Temporary access cleanup
+
+The user explicitly approved temporary **workspace-wide** SSH access after automatic review rejected the earlier personal-key registration. The CLI only searches its agent/`~/.ssh` inventory, so its key-path flag could not find the protected project-local key. Registration through the inspected official API succeeded with the approved workspace scope. The temporary registration ID was `5420c217-3f79-499f-97eb-2471b9fd953b`; its public fingerprint was `SHA256:3z/bboC50hanGTxBlLw7PNgpSATJSew3bIQZnMCJTV8`.
+
+Remote operator runtimes and temporary roster/command files were removed. The key registration was **deleted**, and the workspace key list confirmed none remain. Health/readiness stayed 200 after cleanup. Local private key/role credentials and exact recipient evidence remain 0700/0600 under ignored operator storage; no secret entered Git or a tool argument. Further maintenance access requires an authorized temporary registration, not an assumed persistent key.
 
 ### Hosted backup entitlement and usage
 
-The actual volume instance is `7a116fb2-7202-4404-bf3d-d0528a033f04`, with observed usage 133.824512 MB on its 5000 MB volume. Its backup schedule list is empty. The approved attempt to enable DAILY backups was rejected by Railway: **"Manual backups and backup schedules are only available for Pro workspaces"**. Re-fetch confirmed no schedule was created. No subscription upgrade, PITR or alternate paid storage was enabled. Hosted backup acceptance remains blocked pending an operator-selected plan or reviewed backup approach.
+The actual volume instance is `7a116fb2-7202-4404-bf3d-d0528a033f04`, with observed usage 133.824512 MB on its 5000 MB volume. Its backup schedule list is empty. The approved attempt to enable DAILY backups was rejected by Railway: **"Manual backups and backup schedules are only available for Pro workspaces"**. Re-fetch confirmed no schedule was created. No subscription upgrade, PITR or alternate paid storage was enabled. Hosted backup acceptance remains blocked pending an operator-selected plan or reviewed backup approach. A one-time local age-encrypted export was prepared as a possible pilot alternative, but automatic approval review rejected exporting private database contents without specific payload/destination authorization. **No export or archive was created.** A checksum-verified temporary age 1.3.2 tool and protected local encryption identity are prepared; do not claim a local, offsite, scheduled or tested restore backup exists.
 
-Railway's usage API reported current-period resource usage `$0.007874182515617285` at the October 18 check and no workspace usage limit. The billing period is October 17–November 17. This is an early usage snapshot, not a monthly operating-cost estimate; the identity app has not started. A separate `$5` agent-tooling limit exists and is not a workload spending cap. No spending cap was changed. [Railway backup schedules and incremental volume pricing](https://docs.railway.com/volumes/backups).
+Railway's usage API reported current-period resource usage `$0.007874182515617285` at the October 18 check and no workspace usage limit. The billing period is October 17–November 17. This is an early usage snapshot taken before the identity app started, not a monthly operating-cost estimate. A separate `$5` agent-tooling limit exists and is not a workload spending cap. No spending cap was changed. [Railway backup schedules and incremental volume pricing](https://docs.railway.com/volumes/backups).
 
 ### GitHub CI fixture correction
 
@@ -70,8 +92,8 @@ The identity job at `82b9cc7` hung after its first application lifecycle test an
 
 ## Outstanding acceptance gates
 
-1. Complete the approved Railway identity release, actual private database role/readiness/backup verification and measured cost controls.
-2. Exact native OAuth registration/resource behavior, two real verified accounts, signed token claims, refresh/reuse/logout/reconnect and immediate local revocation.
+1. Select/authorize a functioning backup approach and complete hosted export/restore verification and workload cost controls. The identity release, roles/schema and readiness checks above passed.
+2. Verify the configured native OAuth registration/resource behavior with two real verified accounts, signed token claims, refresh/reuse/logout/reconnect and immediate local revocation.
 3. Simultaneous native cloud sessions for the same user, including copied-token/handle attacks. Until an integrity-protected work-session mechanism is established, full milestone acceptance and desktop authority stay blocked.
 4. Production mail provider or a reviewed onboarding change before class rollout; built-in development delivery is not production readiness.
 Local integration, coverage, rebuilt container verification and independent implementation review are complete. These results do not satisfy the outstanding hosted/native gates above.
