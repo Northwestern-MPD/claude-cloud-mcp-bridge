@@ -53,6 +53,12 @@ The initial scoped revocation preflight lacked `read:grants`. The operator compl
 
 Private-observation limitation: the serving identity request computes a fingerprint in memory, but does not persist/expose private native request observations with fingerprint/expiry. Consequently the current release cannot prove that an identical still-valid JWT was denied after local revocation, or establish copied-token/handle equality across native chats. Do not extract Claude-held credentials or add public diagnostic tools to fill this gap. Production remains `SESSION_ISOLATION_UNPROVEN`; a reviewed private observation change is needed for the stronger evidence.
 
+### Concurrent native identity calls — two account A sessions
+
+The operator kept the original cloud session open, started a second session using the existing connector and reported successful `class_identity` results from the new session and then the original session. Both matched A’s original user/course/team and returned desktop access disabled; the new-session result also explicitly matched the resource. No error or sign-in prompt was reported, although prompt absence was not separately stated. Full results remain in protected `native-concurrent-account-a-results.json`.
+
+This passes concurrent same-account identity usability. It does not establish whether the connector reused the same bearer, refresh grant or MCP transport across chats, or demonstrate that desktop permissions would be bound to one work session. No copied-token/handle experiment or separately authenticated B control was performed; the operator chose A only for these checks. `SESSION_ISOLATION_UNPROVEN` remains the production result. The remaining Task 12 equality/attack evidence requires private observations and client capabilities absent from the current release; a successful identity result must not be treated as session binding.
+
 ### Reported hosted-login UX and latency
 
 The operator reported roughly 20 seconds waiting after submitting the email code/authorization, with no visible progress and repeated button clicks allowed. The precise browser request/click timing has not been captured, so the delay's cause remains unproven.
