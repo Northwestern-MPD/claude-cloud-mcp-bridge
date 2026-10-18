@@ -48,6 +48,7 @@ export async function openAuthorizationStore(options: OpenStoreOptions): Promise
   let available = true;
   let closed = false;
   let shuttingDown: Promise<void> | undefined;
+  let ownerProbe: Promise<void> | undefined;
   const listeners = new Set<()=>void>();
   function shutdown(): Promise<void> {
     if (!shuttingDown) shuttingDown=pool.end().catch(()=>{}).then(()=>owner.end()).catch(()=>{});
@@ -99,7 +100,8 @@ export async function openAuthorizationStore(options: OpenStoreOptions): Promise
       async ready() {
         if (!available || closed || options.maintenance) return false;
         try {
-          await owner.query('SELECT 1');
+          if (!ownerProbe) ownerProbe=owner.query('SELECT 1').then(()=>{}).finally(()=>{ ownerProbe=undefined; });
+          await ownerProbe;
           return await transaction(async(client)=>{
             const state=await client.query('SELECT maintenance,boot_id,store_id,deployment_epoch,token_iat_after FROM mpd_identity.service_state WHERE singleton=true');
             const row=state.rows[0];

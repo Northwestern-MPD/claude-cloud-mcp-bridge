@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "class-identity-example-only": {
+      "type": "http",
+      "url": "https://YOUR-IDENTITY-SERVICE.up.railway.app/mcp"
+    }
+  }
+}

@@ -43,10 +43,17 @@ export async function createTestDatabase() {
     appUrl: roleUrl('mpd_identity_app'), backupUrl: roleUrl('mpd_identity_backup'),
     adminUrl: url.href,
     async provisionRoles() {
-      const { bootstrapAuthorizationRoles } = await import('../../packages/storage/migrations.js');
-      await bootstrapAuthorizationRoles(privileged);
-      for (const role of ['mpd_identity_migrator', 'mpd_identity_app', 'mpd_identity_backup']) {
-        await privileged.query(`ALTER ROLE ${role} PASSWORD '${TEST_PASSWORD}'`);
+      // PostgreSQL advisory locks are database-scoped. Every fixture uses this
+      // same marked administrative database while mutating cluster-wide roles.
+      await admin.query('SELECT pg_advisory_lock(1297105993,3)');
+      try {
+        const { bootstrapAuthorizationRoles } = await import('../../packages/storage/migrations.js');
+        await bootstrapAuthorizationRoles(privileged);
+        for (const role of ['mpd_identity_migrator', 'mpd_identity_app', 'mpd_identity_backup']) {
+          await privileged.query(`ALTER ROLE ${role} PASSWORD '${TEST_PASSWORD}'`);
+        }
+      } finally {
+        await admin.query('SELECT pg_advisory_unlock(1297105993,3)');
       }
     },
     async close() {

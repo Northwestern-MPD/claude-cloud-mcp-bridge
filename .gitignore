@@ -6,3 +6,9 @@ work/
 !.env.example
 *.db*
 coverage/
+# Protected Postgres/operator backup artifacts
+*.dump
+*.dump.age
+*.backup
+*.pgpass
+*pg_service*.conf

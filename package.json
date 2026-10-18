@@ -15,19 +15,29 @@
     "connector": "tsx apps/connector/main.ts",
     "probe": "tsx apps/probe.ts",
     "build:probe": "node scripts/build-probe.mjs",
-    "start": "node probe/http.cjs --http"
+    "start": "node probe/http.cjs --http",
+    "start:identity": "node dist/apps/identity/main.js",
+    "operator": "node dist/apps/operator/main.js",
+    "migrate:identity": "node dist/scripts/migrate-identity.js",
+    "test:db": "node --import tsx --test --test-concurrency=1 test/database/*.test.ts",
+    "test:all": "npm test && npm run test:db && npm run dev:mock",
+    "test:identity-container": "node --import tsx --test test/container/identity.test.ts",
+    "test:coverage": "c8 --all --extension .ts --include \"apps/**/*.ts\" --include \"packages/**/*.ts\" --check-coverage --lines 91 --functions 91 --branches 91 --statements 91 --reporter text --reporter lcov npm run test:all"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",
     "jose": "6.2.12",
+    "nodemailer": "10.1.2",
     "pg": "8.23.1",
     "ws": "8.22.0",
     "zod": "4.6.7"
   },
   "devDependencies": {
     "@types/node": "26.6.5",
+    "@types/nodemailer": "8.0.2",
     "@types/pg": "8.23.1",
     "@types/ws": "8.18.2",
+    "c8": "12.0.0",
     "esbuild": "0.28.2",
     "tsx": "4.23.15",
     "typescript": "7.0.2"

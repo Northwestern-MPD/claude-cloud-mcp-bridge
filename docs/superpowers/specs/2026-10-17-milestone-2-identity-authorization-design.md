@@ -1,7 +1,7 @@
 # Milestone 2: reusable class MCP identity and durable authorization
 
 Date: October 17, 2026 (America/Chicago)
-Status: design approved by the operator on October 17, 2026; storage revised to Railway Postgres at the operator's request the same day. The [implementation plan](../plans/2026-10-17-milestone-2-identity-authorization.md) is prepared for review; implementation, account provisioning and production auth verification have not started.
+Status: design approved October 17, 2026; implementation in progress October 18. Reusable authentication, identity HTTP, durable Postgres policy and recovery are implemented locally. Auth0 development email delivery reached both authorized test inboxes. Railway services are staged only. Native OAuth/same-user context verification and production email readiness remain pending; full milestone acceptance is blocked. See [verification evidence](../../IDENTITY_VERIFICATION.md).
 
 ## 1. Intent and accepted decisions
 
@@ -230,25 +230,25 @@ Review Auth0 entitlements, SMTP delivery, Railway usage alerts and hard-limit im
 
 ## 11. Acceptance matrix and evidence
 
-| Area | Required result |
-|---|---|
-| Token verification | Valid access token accepted; wrong issuer/audience/key/algorithm, ID token, expired/future/invalid claims and fixture bearer denied |
-| Client/scopes | Unknown client and missing required scopes denied; valid client/scopes never bypass local enrollment |
-| Invitations | Invited verified subject activates once; unverified, uninvited, expired, disabled, reused invite and email-only spoof denied |
-| Stable identity | Email/display-name changes do not change ownership; different issuer/subject cannot inherit enrollment |
-| Reuse | Second server fixture uses the same package; each rejects the other's audience and enforces its own scopes/policy |
-| Real native OAuth | Actual Claude cloud login, tool discovery and `class_identity` identify the enrolled account with no shell/SDK substitute |
-| Two real accounts | Separate students get separate identities/rosters; same-team membership grants no other student's device access in local policy tests |
-| Same user, two sessions | Section 8's real-client experiment establishes independent approved contexts, or records an explicit blocked result and keeps desktop disabled |
-| Refresh/logout | Real-client refresh behavior observed; expired/revoked refresh fails as configured; local denial rejects still-valid access tokens |
-| Disable/removal | Local disable, membership removal, token/resource block and device revoke deny the next authorized dispatch and terminate affected grants; a token denied between HTTP verification and fenced admission sends no frame, and token expiry during a lock wait also denies |
-| Concurrency | Independent Postgres clients cannot create multiple active leases, reuse pairings or overlap writes; lock timeout/deadlock/ambiguous commit and dispatch-vs-revoke tests fail closed without replay |
-| Deployment handoff | Overlapping replacement fails closed without invalidating the incumbent; explicit drain/stop/lock-release/start succeeds for deploy and rollback with autodeploys disabled |
-| Restart | Enrollment/revocation survives; contexts/leases/pairings die, epochs advance, devices offline; no mutation replay |
-| Storage failure | Missing database/schema, incorrect store marker, pool exhaustion, network/owner-connection loss, failed migration and wrong role privileges fail closed; no in-memory fallback |
-| Backup restore | Isolated pg_restore/constraint/role checks pass; maintenance, new epoch, monotonic issuance cutoff and current revocation manifest prevent authority resurrection after reconciliation/reopened admission; unknown revocation state stays denied |
-| Secrets/logs | Captured responses/logs/audit contain no bearer, refresh/device secret, OTP, raw token claims, code, screenshot or scene payload |
-| Existing behavior | Current mock policy tests and dependency-free ping probe remain valid; generated artifacts drift only when their sources change |
+| Area | Required result | Observed status (October 18) |
+|---|---|---|
+| Token verification | Valid access token accepted; wrong issuer/audience/key/algorithm, ID token, expired/future/invalid claims and fixture bearer denied | Local tests pass |
+| Client/scopes | Unknown client and missing required scopes denied; valid client/scopes never bypass local enrollment | Local tests pass |
+| Invitations | Invited verified subject activates once; unverified, uninvited, expired, disabled, reused invite and email-only spoof denied | Local tests pass |
+| Stable identity | Email/display-name changes do not change ownership; different issuer/subject cannot inherit enrollment | Local tests pass |
+| Reuse | Second server fixture uses the same package; each rejects the other's audience and enforces its own scopes/policy | Local tests pass |
+| Real native OAuth | Actual Claude cloud login, tool discovery and `class_identity` identify the enrolled account with no shell/SDK substitute | Blocked: hosted publication/native client setup pending |
+| Two real accounts | Separate students get separate identities/rosters; same-team membership grants no other student's device access in local policy tests | Both development emails delivered; real sign-ins pending; local policy passes |
+| Same user, two sessions | Section 8's real-client experiment establishes independent approved contexts, or records an explicit blocked result and keeps desktop disabled | Native experiment pending; SESSION_ISOLATION_UNPROVEN; desktop disabled |
+| Refresh/logout | Real-client refresh behavior observed; expired/revoked refresh fails as configured; local denial rejects still-valid access tokens | Native refresh/logout pending; local denial tests pass |
+| Disable/removal | Local disable, membership removal, token/resource block and device revoke deny the next authorized dispatch and terminate affected grants; a token denied between HTTP verification and fenced admission sends no frame, and token expiry during a lock wait also denies | Local tests pass |
+| Concurrency | Independent Postgres clients cannot create multiple active leases, reuse pairings or overlap writes; lock timeout/deadlock/ambiguous commit and dispatch-vs-revoke tests fail closed without replay | Local tests pass |
+| Deployment handoff | Overlapping replacement fails closed without invalidating the incumbent; explicit drain/stop/lock-release/start succeeds for deploy and rollback with autodeploys disabled | Container handoff/rollback pass; hosted procedure pending |
+| Restart | Enrollment/revocation survives; contexts/leases/pairings die, epochs advance, devices offline; no mutation replay | Local tests pass |
+| Storage failure | Missing database/schema, incorrect store marker, pool exhaustion, network/owner-connection loss, failed migration and wrong role privileges fail closed; no in-memory fallback | Local tests pass |
+| Backup restore | Isolated pg_restore/constraint/role checks pass; maintenance, new epoch, monotonic issuance cutoff and current revocation manifest prevent authority resurrection after reconciliation/reopened admission; unknown revocation state stays denied | Isolated Postgres 17 dump/restore pass; hosted backup entitlement/procedure pending |
+| Secrets/logs | Captured responses/logs/audit contain no bearer, refresh/device secret, OTP, raw token claims, code, screenshot or scene payload | Local tests pass |
+| Existing behavior | Current mock policy tests and dependency-free ping probe remain valid; generated artifacts drift only when their sources change | Local regression checks pass; final integration in progress |
 
 Start implementation with meaningful failing tests for the selected slice. Run existing tests, typecheck and build as appropriate to the changed components; verify probe regeneration drift when probe dependencies/sources change. Version exact new dependencies before installation and commit lockfile changes. A documentation review does not require rerunning application tests.
 

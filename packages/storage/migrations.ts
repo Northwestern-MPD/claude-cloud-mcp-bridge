@@ -114,8 +114,15 @@ REVOKE INSERT,UPDATE,DELETE ON mpd_identity.schema_migrations FROM mpd_identity_
 REVOKE INSERT,UPDATE,DELETE ON mpd_identity.service_state FROM mpd_identity_app;
 GRANT UPDATE(deployment_epoch,token_iat_after,maintenance,boot_id,updated_at) ON mpd_identity.service_state TO mpd_identity_app;
 `;
+const operationRecoverySql = `
+ALTER TABLE mpd_identity.operation_attempts
+  ADD COLUMN token_fingerprint text CHECK (token_fingerprint IS NULL OR token_fingerprint ~ '^[0-9a-f]{64}$'),
+  ADD COLUMN deadline_at bigint CHECK (deadline_at IS NULL OR deadline_at>0);
+ALTER TABLE mpd_identity.courses ADD COLUMN closed_at bigint CHECK (closed_at IS NULL OR closed_at>=0);
+`;
 export const AUTHORIZATION_MIGRATIONS = Object.freeze([
   Object.freeze({ version: 1, sql: initialSql, checksum: createHash('sha256').update(initialSql).digest('hex') }),
+  Object.freeze({ version: 2, sql: operationRecoverySql, checksum: createHash('sha256').update(operationRecoverySql).digest('hex') }),
 ]);
 
 export function validateStoreIdentity(storeId: string, epoch: string): void {
@@ -123,7 +130,7 @@ export function validateStoreIdentity(storeId: string, epoch: string): void {
   if (!epoch || epoch.length>256 || /[\x00-\x1f]/.test(epoch)) throw new Error('INVALID_DEPLOYMENT_EPOCH');
 }
 
-export async function validateSchema(client: Transaction, expectedStoreId: string): Promise<void> {
+export async function validateSchema(client: Transaction, expectedStoreId: string, allowPending = false): Promise<void> {
   const tables = await client.query("SELECT to_regclass('mpd_identity.service_state') AS state, to_regclass('mpd_identity.schema_migrations') AS migrations");
   if (!tables.rows[0]?.state || !tables.rows[0]?.migrations) throw new Error('STORE_NOT_INITIALIZED');
   const state = await client.query('SELECT store_id FROM mpd_identity.service_state WHERE singleton=true');
@@ -132,9 +139,11 @@ export async function validateSchema(client: Transaction, expectedStoreId: strin
   const applied = await client.query('SELECT version,checksum FROM mpd_identity.schema_migrations ORDER BY version');
   const latest = AUTHORIZATION_MIGRATIONS.at(-1)!.version;
   if (applied.rows.some((row) => row.version>latest)) throw new Error('UNSUPPORTED_SCHEMA');
-  if (applied.rows.length!==AUTHORIZATION_MIGRATIONS.length) throw new Error('INCOMPLETE_SCHEMA');
-  for (const migration of AUTHORIZATION_MIGRATIONS) {
-    if (applied.rows.find((row) => row.version===migration.version)?.checksum!==migration.checksum) throw new Error('MIGRATION_CHECKSUM_MISMATCH');
+  if (!applied.rowCount || (!allowPending && applied.rowCount!==AUTHORIZATION_MIGRATIONS.length)) throw new Error('INCOMPLETE_SCHEMA');
+  for (const [index, row] of applied.rows.entries()) {
+    const migration = AUTHORIZATION_MIGRATIONS[index];
+    if (!migration || row.version!==migration.version) throw new Error('INCOMPLETE_SCHEMA');
+    if (row.checksum!==migration.checksum) throw new Error('MIGRATION_CHECKSUM_MISMATCH');
   }
 }
 
@@ -186,6 +195,12 @@ export async function migrateAuthorizationStore(options: MigrationOptions): Prom
         }
         await client.query('INSERT INTO mpd_identity.service_state(store_id,deployment_epoch,maintenance) VALUES($1,$2,true)',[options.expectedStoreId,options.deploymentEpoch]);
       } else {
+        await validateSchema(client,options.expectedStoreId,true);
+        const applied = await client.query('SELECT version FROM mpd_identity.schema_migrations ORDER BY version');
+        for (const migration of AUTHORIZATION_MIGRATIONS.slice(applied.rows.length)) {
+          await client.query(migration.sql);
+          await client.query('INSERT INTO mpd_identity.schema_migrations(version,checksum) VALUES($1,$2)',[migration.version,migration.checksum]);
+        }
         await validateSchema(client,options.expectedStoreId);
         await client.query('UPDATE mpd_identity.service_state SET maintenance=true');
       }

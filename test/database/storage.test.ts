@@ -72,7 +72,7 @@ test('two migration clients contend and failed migration rolls back all DDL', as
     assert.equal(done, false);
     await locker.query('SELECT pg_advisory_unlock(1297105993,1)'); await locker.end(); await migration;
     await migrateAuthorizationStore({ ...migrationOptions(db), initialize: false });
-    assert.equal((await db.admin.query('SELECT count(*) FROM mpd_identity.schema_migrations')).rows[0].count, '1');
+    assert.equal((await db.admin.query('SELECT count(*) FROM mpd_identity.schema_migrations')).rows[0].count, '2');
   } finally { await db.close(); }
   const broken = await createTestDatabase();
   try {
@@ -276,4 +276,45 @@ test('recovery epoch requires an externally advanced issuance cutoff before chan
     await assert.rejects(openAuthorizationStore({ ...options(db),deploymentEpoch:'restore',maintenance:true }),/RECOVERY_TOKEN_IAT_AFTER_REQUIRED/);
     assert.equal((await db.admin.query('SELECT deployment_epoch,token_iat_after FROM mpd_identity.service_state')).rows[0].deployment_epoch,epoch);
   } finally {await db.close();}
+});
+
+test('concurrent readiness uses no overlapping dedicated owner client queries',async()=>{
+  const db=await initialized();let store:Store|undefined;const warnings:Error[]=[];
+  const capture=(warning:Error)=>{if(warning.message.includes('already executing a query'))warnings.push(warning);};
+  process.on('warning',capture);
+  try{store=await openAuthorizationStore(options(db));await store.setMaintenance(false);assert.ok((await Promise.all(Array.from({length:8},()=>store!.ready()))).every(Boolean));await new Promise(resolve=>setImmediate(resolve));assert.equal(warnings.length,0);}
+  finally{process.off('warning',capture);await store?.close();await db.close();}
+});
+
+test('parallel disposable fixtures serialize cluster-wide role provisioning',async()=>{
+  const databases=await Promise.all(Array.from({length:4},()=>createTestDatabase()));
+  try{const provisioned=await Promise.allSettled(databases.map(db=>db.provisionRoles()));assert.deepEqual(provisioned.map(result=>result.status),['fulfilled','fulfilled','fulfilled','fulfilled']);}
+  finally{await Promise.all(databases.map(db=>db.close()));}
+});
+
+test('operator upgrades an existing version-one store before runtime opens it', async () => {
+  const db = await createTestDatabase();
+  const { AUTHORIZATION_MIGRATIONS } = await import('../../packages/storage/migrations.js');
+  try {
+    await db.provisionRoles();
+    const migrator = await client(db.migrationUrl);
+    try {
+      await migrator.query('BEGIN');
+      await migrator.query('SET LOCAL ROLE mpd_identity_owner');
+      await migrator.query('CREATE SCHEMA mpd_identity AUTHORIZATION mpd_identity_owner');
+      await migrator.query(AUTHORIZATION_MIGRATIONS[0]!.sql);
+      await migrator.query('INSERT INTO mpd_identity.schema_migrations(version,checksum) VALUES(1,$1)', [AUTHORIZATION_MIGRATIONS[0]!.checksum]);
+      await migrator.query('INSERT INTO mpd_identity.service_state(store_id,deployment_epoch) VALUES($1,$2)', [storeId, epoch]);
+      await migrator.query('COMMIT');
+    } finally { await migrator.end(); }
+    await migrateAuthorizationStore({ ...migrationOptions(db), initialize: false });
+    const columns = await db.admin.query("SELECT table_name,column_name FROM information_schema.columns WHERE table_schema='mpd_identity' AND column_name IN ('token_fingerprint','deadline_at','closed_at') ORDER BY column_name");
+    assert.deepEqual(columns.rows, [
+      { table_name: 'courses', column_name: 'closed_at' },
+      { table_name: 'operation_attempts', column_name: 'deadline_at' },
+      { table_name: 'operation_attempts', column_name: 'token_fingerprint' },
+    ]);
+    const store = await openAuthorizationStore(options(db));
+    await store.close();
+  } finally { await db.close(); }
 });
