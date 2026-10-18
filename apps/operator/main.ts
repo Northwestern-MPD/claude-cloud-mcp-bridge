@@ -26,6 +26,14 @@ export async function createFileEnrollmentAdmin(directory:string,admin:OperatorD
 function argument(args:readonly string[],name:string):string|undefined{const index=args.indexOf(name);return index<0?undefined:args[index+1];}
 export async function runOperator(args:readonly string[],deps:OperatorDependencies):Promise<number>{
   const [operation,...rest]=args;
+  if(operation==='native-observations'){
+    if(rest.length!==0)throw new PolicyError('INVALID_OPERATOR_ARGUMENT');
+    const result=await deps.admin.execute({kind:'native-observations'});deps.output(JSON.stringify(result));return 0;
+  }
+  if(operation==='deny-observed-token'){
+    if(rest.length!==4||!argument(rest,'--reference')||!argument(rest,'--reason'))throw new PolicyError('INVALID_OPERATOR_ARGUMENT');
+    const result=await deps.admin.execute(parseAdminCommand({kind:'deny-observed-token',reference:argument(rest,'--reference'),reason:argument(rest,'--reason')}));deps.output(JSON.stringify(result));return 0;
+  }
   if(operation==='admin'){
     const file=argument(rest,'--file');if(!file||rest.length!==2)throw new PolicyError('INVALID_OPERATOR_ARGUMENT');
     const command=parseAdminCommand(JSON.parse(await readPrivateFile(file)));const result=await deps.admin.execute(command);deps.output(JSON.stringify(result));return 0;

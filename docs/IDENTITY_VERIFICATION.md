@@ -67,6 +67,16 @@ Available provider timing: the whole login transaction was 29.005 seconds, inclu
 
 The screen is Auth0-hosted Universal Login. Basic text/themes are supported; a supported custom loading/duplicate-submit interaction can be implemented through ACUL, which requires a custom domain and hosted frontend assets. The tenant currently has no custom domain. No page behavior or branding was changed during this diagnosis. Proposed behavior for a later scoped UI change: immediately show “Verifying…”, disable repeated clicks/Enter submissions while pending, announce progress accessibly, and restore a clear retry after an error/timeout. [Auth0 basic theming](https://auth0.com/docs/customize/login-pages/universal-login/customize-themes), [ACUL capabilities and requirements](https://auth0.com/docs/customize/login-pages/advanced-customizations).
 
+## Approved private observation extension — local verification
+
+The operator approved completing the plan’s missing private observation hooks. The new implementation keeps at most 64 verified-request records for five minutes or original token expiry, whichever is earlier. One unref timer erases idle expired records; shutdown clears records and correlation secrets. Private reports contain at most eight rows and fit the strict 4 KiB admin response frame. Token/principal/context correlations are per-boot opaque HMAC values; no raw bearer, fingerprint, subject/email, scopes or usable MCP handle is exported. Only verified requests create references.
+
+`native-observations` and `deny-observed-token` are private Unix-socket/operator commands, not MCP tools. Denial resolves the reference internally and delegates the existing durable token-denial/coordinator path with the original JWT expiry (existing 60-second storage grace retained). Unknown, expired, evicted, other-boot and closed references fail. No account or resource-wide block is added; an alternate otherwise-authorized token for the same user remains usable.
+
+Focused independent review found one important reporting issue: MCP authorization errors returned as HTTP200 could appear allowed. A real-DB forced-revocation race reproduced this; request-local outcome propagation fixed it. A minor response-validation coercion was also reproduced and fixed. Parent review required automatic idle expiry and its mock-timer regression. RED/GREEN evidence remains in the execution ledger and `/tmp/mpd-private-observation-*.log`.
+
+Final local coverage passed **143 root +234 PostgreSQL tests (377 total)**, mock demo, typecheck/build and probe artifact drift. Coverage is **95.51% lines/statements, 97.01% functions and 93.32% branches**; the new observation module has 100% in all four metrics. The freshly rebuilt identity image passed **11/11 container checks**. Remote CI/deployment are recorded separately below when complete. This adds evidence collection, not a verified work-session binding; native observed-token denial remains pending deployment and an actual client repeat.
+
 ## Local implementation evidence
 
 The reusable package has no storage/Blender/connector imports. Verification enforces RS256, configured issuer/resource, signed client/scopes, fixed verified-email claim and expiry. Tests cover a second independent MCP resource. PostgreSQL tests use a marked disposable PostgreSQL 17 cluster with real restricted roles and independent clients.

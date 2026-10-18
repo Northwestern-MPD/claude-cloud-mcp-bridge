@@ -1,7 +1,11 @@
 import type { RecoveryManifest } from '../../packages/storage/recovery.js';
 import type { InvitationInput } from '../../packages/storage/enrollment.js';
 
+import type { NativeObservation } from '../../packages/authorization/native-observations.js';
+
 export type AdminCommand =
+  | Readonly<{kind:'native-observations'}>
+  | Readonly<{kind:'deny-observed-token';reference:string;reason:string}>
   | Readonly<{kind:'import-invites';invitations:readonly InvitationInput[]}>
   | Readonly<{kind:'disable-user';userId:string;reason:string}>
   | Readonly<{kind:'remove-membership';userId:string;teamId:string;reason:string}>
@@ -12,7 +16,7 @@ export type AdminCommand =
   | Readonly<{kind:'reconcile-roster';manifest:RecoveryManifest}>
   | Readonly<{kind:'retention'}>
   | Readonly<{kind:'close-course';courseId:string}>;
-export type AdminResult=Readonly<{ok:true;affected:number}>;
+export type AdminResult=Readonly<{ok:true;affected:number;observations?:readonly NativeObservation[]}>;
 export type RosterRow=Omit<InvitationInput,'subject'>&Readonly<{subject?:string}>;
 export type ProviderIdentity=Readonly<{subject:string;email:string;connection:'email'}>;
 export type Auth0Provisioner=Readonly<{reconcile(input:Readonly<{email:string;subject?:string}>):Promise<ProviderIdentity>}>;

@@ -35,6 +35,7 @@ test('actual identity application opens its private admin socket and honors main
   assert.equal(await health(port), 503);
   assert.equal(await health(port, '/health'), 200, 'liveness stays available during maintenance');
   const admin = createSocketAdmin(env.AUTHZ_ADMIN_SOCKET);
+  assert.deepEqual(await admin.execute({kind:'native-observations'} as any),{ok:true,affected:0,observations:[]});
   assert.deepEqual(await admin.execute({ kind: 'maintenance', enabled: false }), { ok: true, affected: 1 });
   assert.equal(await health(port), 200);
   await assert.rejects(startIdentityApplication({ ...env, PORT: String(await freePort()) }), /STORE_ALREADY_OWNED/);

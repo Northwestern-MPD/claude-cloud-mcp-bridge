@@ -1,3 +1,4 @@
+import type { NativeObservations } from '../../packages/authorization/native-observations.js';
 import { randomUUID } from 'node:crypto';
 import { enrollInvitation } from '../../packages/storage/enrollment.js';
 import { reconcileRoster } from '../../packages/storage/recovery.js';
@@ -9,9 +10,19 @@ import { PolicyError,policyError } from '../../packages/authorization/errors.js'
 import { parseAdminCommand } from './socket.js';
 import type { AdminCommand,AdminResult } from './types.js';
 
-export async function executeAdmin(command:AdminCommand,deps:{store:Store;runtime:IdentityRuntime;coordinator:DispatchCoordinator;now():number}):Promise<AdminResult>{
+export async function executeAdmin(command:AdminCommand,deps:{store:Store;runtime:IdentityRuntime;coordinator:DispatchCoordinator;now():number;observations?:NativeObservations}):Promise<AdminResult>{
   const input=parseAdminCommand(command);
   if(deps.coordinator!==deps.runtime.coordinator)throw new PolicyError('COORDINATOR_MISMATCH');
+  if(input.kind==='native-observations'){
+    if(!deps.observations)throw new PolicyError('OBSERVATION_UNAVAILABLE');
+    const observations=deps.observations.report();return{ok:true,affected:observations.length,observations};
+  }
+  if(input.kind==='deny-observed-token'){
+    if(!deps.observations)throw new PolicyError('OBSERVATION_UNAVAILABLE');
+    const token=deps.observations.resolve(input.reference);
+    await revokeAuthorization(deps.store,{kind:'deny-token',...token,reason:input.reason},deps.runtime,deps.coordinator,deps.now);
+    return{ok:true,affected:1};
+  }
   if(input.kind==='reconcile-roster'){
     const result=await reconcileRoster(deps.store,input.manifest,deps.runtime,deps.now);
     return{ok:true,affected:result.activated};

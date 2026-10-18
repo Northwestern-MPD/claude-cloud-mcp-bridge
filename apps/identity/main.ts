@@ -28,7 +28,7 @@ export async function startIdentityApplication(env: NodeJS.ProcessEnv = process.
   try {
     const resolveKey = createJwksResolver(config.auth, { fetch, now: Date.now });
     server = await startIdentityServer({ config, store, runtime, verify: token => verifyAccessToken(token, config.auth, { resolveKey, now: Date.now }) });
-    admin = await startAdminSocket(config.adminSocketPath, command => executeAdmin(command, { store, runtime, coordinator: runtime.coordinator, now: Date.now }));
+    admin = await startAdminSocket(config.adminSocketPath, command => executeAdmin(command, { store, runtime, coordinator: runtime.coordinator, now: Date.now, observations: server!.observations }));
     unsubscribe = store.onUnavailable(() => { process.exitCode = 1; void close(); });
     return { close };
   } catch (error) { await close(); throw error; }

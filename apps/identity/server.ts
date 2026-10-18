@@ -6,6 +6,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { CallToolRequestSchema, ListToolsRequestSchema, isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { AuthError, authenticationChallenge, metadataPath, protectedResourceMetadata, requireScopes } from '../../packages/auth/index.js';
 import type { VerifiedPrincipal, VerifiedRequestAuth } from '../../packages/auth/types.js';
+import { createNativeObservations, type NativeObservations } from '../../packages/authorization/native-observations.js';
 import { PolicyError } from '../../packages/authorization/errors.js';
 import { authorizeIdentity } from '../../packages/authorization/identity.js';
 import type { IdentityRuntime } from '../../packages/authorization/runtime.js';
@@ -16,15 +17,16 @@ import type { IdentityConfig } from './config.js';
 const MAX_BYTES = 65_536;
 const MAX_BEARER_BYTES = 16_384;
 const SESSION_LIFETIME_MS = 3_600_000;
-const requestEvidence = new AsyncLocalStorage<VerifiedRequestAuth>();
+const requestEvidence = new AsyncLocalStorage<{ auth: VerifiedRequestAuth; deny(): void }>();
 type Session = { context: ContextRef; issuer: string; subject: string; expiresAt: number; server: Server; transport: StreamableHTTPServerTransport; unregister: () => void };
 class HttpError extends Error { constructor(readonly status: number, readonly code: string) { super(code); } }
 
 export async function startIdentityServer(options: {
   config: IdentityConfig; store: Store; verify(token: string): Promise<VerifiedPrincipal>; runtime: IdentityRuntime; clock?: () => number;
-}): Promise<{ url: string; close(): Promise<void> }> {
+}): Promise<{ url: string; observations: NativeObservations; close(): Promise<void> }> {
   const { config, store, runtime } = options;
   const clock = options.clock ?? Date.now;
+  const observations = createNativeObservations(clock);
   // Validate existing durable authority even when maintenance intentionally denies readiness.
   await store.transaction(async tx => {
     const row = (await tx.query('SELECT store_id,boot_id,deployment_epoch,token_iat_after FROM mpd_identity.service_state WHERE singleton=true')).rows[0];
@@ -57,7 +59,7 @@ export async function startIdentityServer(options: {
   function currentEvidence(): VerifiedRequestAuth {
     const evidence = requestEvidence.getStore();
     if (!evidence) throw new PolicyError('CONTEXT_DENIED');
-    return evidence;
+    return evidence.auth;
   }
   async function checkSession(session: Session, auth: VerifiedRequestAuth): Promise<void> {
     if (!runtime.isActive(session.context.id) || session.expiresAt <= clock() || session.issuer !== auth.principal.issuer || session.subject !== auth.principal.subject || session.context.clientId !== auth.principal.clientId || session.context.resource !== auth.resource) throw new PolicyError('CONTEXT_DENIED');
@@ -65,7 +67,7 @@ export async function startIdentityServer(options: {
   }
   async function identityForTool(session: Session) {
     const auth = currentEvidence();
-    return runtime.coordinator.withFence(async () => {
+    try { return await runtime.coordinator.withFence(async () => {
       if (closed || config.maintenance) throw new PolicyError('STORE_UNAVAILABLE');
       const view = await authorizeIdentity(store, auth, { clock });
       await checkSession(session, auth);
@@ -73,7 +75,10 @@ export async function startIdentityServer(options: {
       if (!await store.ready()) throw new PolicyError('STORE_UNAVAILABLE');
       if (auth.principal.expiresAt <= clock()) throw new PolicyError('TOKEN_EXPIRED');
       return view;
-    });
+    }); } catch (error) {
+      requestEvidence.getStore()?.deny();
+      throw error;
+    }
   }
   const http = createServer({ maxHeaderSize: 32_768 }, async (req, res) => {
     const send = (status: number, body: unknown) => {
@@ -89,6 +94,9 @@ export async function startIdentityServer(options: {
     timer.unref();
     res.once('close', () => clearTimeout(timer));
     res.once('finish', () => clearTimeout(timer));
+    let observedAuth: VerifiedRequestAuth | undefined;
+    let observedContext: string | undefined;
+    let outcome: 'allowed' | 'denied' = 'denied';
     try {
       const path = req.url;
       // Railway probes this fixed hostname. It is a liveness exception only,
@@ -105,8 +113,9 @@ export async function startIdentityServer(options: {
       rateLimit(ipLimits, req.socket.remoteAddress ?? 'unknown', 240);
       const bearer = readBearer(req);
       const principal = await options.verify(bearer);
-      requireScopes(principal, config.auth.requiredScopes);
       const auth: VerifiedRequestAuth = Object.freeze({ principal, resource: config.auth.resource, tokenFingerprint: createHash('sha256').update(bearer).digest('hex') });
+      observedAuth = auth;
+      requireScopes(principal, config.auth.requiredScopes);
       const admission = await runtime.coordinator.withFence(async () => {
         if (closed || config.maintenance) throw new PolicyError('STORE_UNAVAILABLE');
         const view = await authorizeIdentity(store, auth, { clock });
@@ -115,7 +124,7 @@ export async function startIdentityServer(options: {
         if (Array.isArray(sessionHeader)) throw new HttpError(400, 'INVALID_SESSION');
         const session = sessionHeader ? sessions.get(sessionHeader) : undefined;
         if (sessionHeader && !session) throw new PolicyError('CONTEXT_DENIED');
-        if (session) await checkSession(session, auth);
+        if (session) { await checkSession(session, auth); observedContext = session.context.id; }
         return { view, session };
       });
       if (path !== '/mcp') throw new HttpError(404, 'NOT_FOUND');
@@ -140,7 +149,10 @@ export async function startIdentityServer(options: {
           server.setRequestHandler(CallToolRequestSchema, async request => {
             try {
               const view = await identityForTool(created);
-              if (request.params.name !== 'class_identity' || (request.params.arguments && Object.keys(request.params.arguments).length !== 0)) return { isError: true, content: [{ type: 'text', text: '{"error":"INVALID_TOOL"}' }] };
+              if (request.params.name !== 'class_identity' || (request.params.arguments && Object.keys(request.params.arguments).length !== 0)) {
+                requestEvidence.getStore()?.deny();
+                return { isError: true, content: [{ type: 'text', text: '{"error":"INVALID_TOOL"}' }] };
+              }
               return { content: [{ type: 'text', text: JSON.stringify(view) }], structuredContent: view };
             } catch (error) {
               return { isError: true, content: [{ type: 'text', text: JSON.stringify({ error: safeError(error).code }) }] };
@@ -155,6 +167,7 @@ export async function startIdentityServer(options: {
         });
       }
       const selected = session;
+      observedContext = selected.context.id;
       if (req.method === 'DELETE') await runtime.coordinator.withFence(async () => {
         await authorizeIdentity(store, auth, { clock }); await checkSession(selected, auth);
         await revokeTransportContext(store, selected.context.id, clock);
@@ -163,12 +176,17 @@ export async function startIdentityServer(options: {
         if (closed || config.maintenance) throw new PolicyError('STORE_UNAVAILABLE');
         await authorizeIdentity(store, auth, { clock }); await checkSession(selected, auth);
       });
-      await requestEvidence.run(auth, () => selected.transport.handleRequest(req, res, body));
+      outcome = 'allowed';
+      await requestEvidence.run({ auth, deny: () => { outcome = 'denied'; } }, () => selected.transport.handleRequest(req, res, body));
       if (req.method === 'DELETE') removeSession(selected.context.id);
+      if (res.statusCode >= 400) outcome = 'denied';
     } catch (error) {
+      outcome = 'denied';
       const failure = safeError(error);
       if (!res.headersSent && !res.destroyed && (failure.status === 401 || (error instanceof AuthError && error.code === 'INSUFFICIENT_SCOPE'))) res.setHeader('WWW-Authenticate', authenticationChallenge(config.auth, failure.status === 401 ? 'invalid_token' : 'insufficient_scope'));
       send(failure.status, { error: failure.code });
+    } finally {
+      if (observedAuth) observations.record(observedAuth, outcome, observedContext);
     }
   });
   http.headersTimeout = 10_000;
@@ -178,7 +196,7 @@ export async function startIdentityServer(options: {
   http.on('upgrade', (_req, socket) => socket.destroy());
   async function close(): Promise<void> {
     if (closePromise) return closePromise;
-    closed = true; unsubscribe(); clearInterval(sweeper);
+    closed = true; observations.close(); unsubscribe(); clearInterval(sweeper);
     closePromise = (async () => {
       for (const id of [...sessions.keys()]) removeSession(id);
       runtime.close();
@@ -197,7 +215,7 @@ export async function startIdentityServer(options: {
   } catch (error) { await close(); throw error; }
   const address = http.address();
   if (!address || typeof address === 'string') { await close(); throw new Error('SERVER_UNAVAILABLE'); }
-  return { url: `http://${config.host.includes(':') ? `[${config.host}]` : config.host}:${address.port}`, close };
+  return { url: `http://${config.host.includes(':') ? `[${config.host}]` : config.host}:${address.port}`, observations, close };
 }
 
 function readBearer(req: IncomingMessage): string {

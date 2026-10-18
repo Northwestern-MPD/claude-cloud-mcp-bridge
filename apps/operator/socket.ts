@@ -19,6 +19,8 @@ export function parseAdminCommand(input:unknown):AdminCommand{
   if(Buffer.byteLength(JSON.stringify(input))>MAX_FRAME)return invalid();
   switch(input.kind){
     case 'reconcile-roster':if(!keys(input,['kind','manifest']))return invalid();return{kind:'reconcile-roster',manifest:parseRecoveryManifest(input.manifest)};
+    case 'native-observations':if(!keys(input,['kind']))return invalid();break;
+    case 'deny-observed-token':if(!keys(input,['kind','reference','reason'])||typeof input.reference!=='string'||!/^[a-f0-9]{32}$/.test(input.reference)||!reason(input.reason))return invalid();break;
     case 'retention':if(!keys(input,['kind']))return invalid();break;
     case 'close-course':if(!keys(input,['kind','courseId'])||!uuid(input.courseId))return invalid();break;
     case 'maintenance':if(!keys(input,['kind','enabled'])||typeof input.enabled!=='boolean')return invalid();break;
@@ -48,7 +50,7 @@ export async function startAdminSocket(path:string,execute:(command:AdminCommand
   const server=createServer(socket=>{
     clients.add(socket);socket.on('error',()=>{});socket.on('close',()=>clients.delete(socket));
     let buffer=Buffer.alloc(0);let submitted=false;
-    const reply=(value:unknown)=>{if(!socket.destroyed)socket.end(JSON.stringify(value)+'\n');};
+    const reply=(value:unknown)=>{if(!socket.destroyed){const frame=JSON.stringify(value)+'\n';socket.end(Buffer.byteLength(frame)<=4096?frame:'{"ok":false,"code":"INVALID_ADMIN_RESPONSE"}\n');}};
     socket.setTimeout(5000,()=>{submitted=true;reply({ok:false,code:'ADMIN_REQUEST_TIMEOUT'});});
     socket.on('data',data=>{
       const chunk=Buffer.isBuffer(data)?data:Buffer.from(data);
@@ -72,6 +74,10 @@ export async function startAdminSocket(path:string,execute:(command:AdminCommand
   await chmod(path,0o600);
   return{async close(){for(const socket of clients)socket.destroy();await new Promise<void>((resolve,reject)=>server.close(error=>error?reject(error):resolve()));try{await unlink(path);}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}}};
 }
+function observationResponse(value:unknown):boolean {
+  if(!Array.isArray(value)||value.length>8)return false;
+  return value.every(row=>object(row)&&keys(row,['reference','token','principal','context','outcome','ageMs','expiresInMs'])&&typeof row.reference==='string'&&/^[a-f0-9]{32}$/.test(row.reference)&&typeof row.token==='string'&&/^[a-f0-9]{16}$/.test(row.token)&&typeof row.principal==='string'&&/^[a-f0-9]{16}$/.test(row.principal)&&(row.context===null||(typeof row.context==='string'&&/^[a-f0-9]{16}$/.test(row.context)))&&(row.outcome==='allowed'||row.outcome==='denied')&&secondsOrMillis(row.ageMs)&&secondsOrMillis(row.expiresInMs)&&row.expiresInMs>0);
+}
 export function createSocketAdmin(path:string):{execute(command:AdminCommand):Promise<AdminResult>}{
   return{execute(command){
     const validated=parseAdminCommand(command);
@@ -80,7 +86,7 @@ export function createSocketAdmin(path:string):{execute(command:AdminCommand):Pr
       socket.on('connect',()=>socket.write(JSON.stringify(validated)+'\n'));
       socket.on('data',chunk=>{buffer+=chunk.toString();if(Buffer.byteLength(buffer)>4096)socket.destroy(new PolicyError('INVALID_ADMIN_RESPONSE'));});
       socket.on('error',()=>reject(new PolicyError('ADMIN_UNAVAILABLE')));
-      socket.on('end',()=>{try{const result=JSON.parse(buffer);if(result.ok!==true)throw new PolicyError(typeof result.code==='string'&&/^[A-Z_]+$/.test(result.code)?result.code:'ADMIN_UNAVAILABLE');if(!Number.isSafeInteger(result.affected)||result.affected<0)throw new PolicyError('INVALID_ADMIN_RESPONSE');resolve({ok:true,affected:result.affected});}catch(error){reject(error instanceof PolicyError?error:new PolicyError('INVALID_ADMIN_RESPONSE'));}});
+      socket.on('end',()=>{try{const result=JSON.parse(buffer);if(result.ok!==true)throw new PolicyError(typeof result.code==='string'&&/^[A-Z_]+$/.test(result.code)?result.code:'ADMIN_UNAVAILABLE');if(!Number.isSafeInteger(result.affected)||result.affected<0)throw new PolicyError('INVALID_ADMIN_RESPONSE');if(validated.kind==='native-observations'){if(!keys(result,['ok','affected','observations'])||!observationResponse(result.observations)||result.affected!==result.observations.length)throw new PolicyError('INVALID_ADMIN_RESPONSE');resolve({ok:true,affected:result.affected,observations:result.observations});}else{if(!keys(result,['ok','affected']))throw new PolicyError('INVALID_ADMIN_RESPONSE');resolve({ok:true,affected:result.affected});}}catch(error){reject(error instanceof PolicyError?error:new PolicyError('INVALID_ADMIN_RESPONSE'));}});
     });
   }};
 }
